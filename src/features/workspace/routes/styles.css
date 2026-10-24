@@ -46,6 +46,23 @@
   letter-spacing: 0.08em;
 }
 
+/*
+ * A colored identity fill (agent avatars, channel icons) with a soft top light,
+ * matching SwiftUI's Color.gradient on the Mac. Set --identity to the base
+ * color. High contrast keeps the fill flat.
+ */
+@utility identity-fill {
+  background-color: var(--identity);
+  background-image: linear-gradient(
+    oklch(from var(--identity) calc(l + 0.11) calc(c* 0.92) h),
+    var(--identity) 70%
+  );
+
+  @media (prefers-contrast: more), (forced-colors: active) {
+    background-image: none;
+  }
+}
+
 /* Keep the viewport content clear of the notch. */
 .safe-top {
   padding-top: env(safe-area-inset-top);

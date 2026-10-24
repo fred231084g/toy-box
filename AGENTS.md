@@ -1,4 +1,4 @@
-Toy Box is a full stack binary built on the Bun runtime. It uses installed Codex, GitHub Copilot, and Claude Code CLIs through a shared Providers feature; TanStack Start and Nitro for the SSR web server, server functions, and HTTP/SSE/WebSocket routes; React, TanStack Router and Query, and Jotai for the client; and Tailwind CSS with shadcn/ui for presentation.
+Toy Box is a full stack binary built on the Bun runtime. It uses installed Codex, GitHub Copilot, and Claude Code CLIs through a shared Providers feature, TanStack Start and Nitro for the SSR web + RPC/SSE/WebSocker server, React and TanStack Router/Query/Store for the client, and Tailwind and Base UI for its design system.
 
 ## Architecture
 

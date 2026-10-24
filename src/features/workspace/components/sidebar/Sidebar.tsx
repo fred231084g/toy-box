@@ -1,27 +1,17 @@
-import { useState } from "react";
 import { AutomationPanel } from "@automations/components/AutomationPanel";
-import { AutomationDialog } from "@automations/components/AutomationDialog";
 import { cn } from "@/shared/utils";
 import type { Session } from "@sessions/model";
 import type { SessionFilters } from "@sessions/components/sidebar/sessionFilters";
 import { AppsPanel } from "@apps/components/AppsPanel";
-import { SettingsDialog } from "./SettingsDialog";
 import { SidebarHeader } from "./SidebarHeader";
 import { SidebarFooter } from "./SidebarFooter";
 import { SidebarRail } from "./SidebarRail";
 import { SidebarResizer, type SidebarCollapseControl } from "./SidebarResizer";
-import {
-  ActionSpacer,
-  CollapseToggle,
-  SettingsButton,
-  type SessionCreationOptions,
-} from "./SidebarActions";
+import { ActionSpacer, CollapseToggle, SettingsButton } from "./SidebarActions";
 import { SessionList } from "@sessions/components/sidebar/SessionList";
-import { FileBrowserDialog } from "@files/components/browser/FileBrowserDialog";
-import { ScreenBrowserDialog } from "@screens/client/ScreenBrowserDialog";
 import { ChannelsPanel } from "@channels/components/sidebar/ChannelsPanel";
-import { ChannelDialog } from "@channels/components/ChannelDialog";
 import type { SidebarPanels } from "@workspace/model/config/layoutPrefs";
+import { openWorkspaceDialog } from "@workspace/hooks/dialogs";
 
 /**
  * Crossfade one of the sidebar's two layouts. Whichever layout is leaving clears
@@ -42,8 +32,6 @@ export type SidebarProps = {
   sessions: Session[];
   isSessionsLoading: boolean;
   onSessionSelect: (sessionId: string, toggleInWorkspace: boolean) => void;
-  onSessionRename: (sessionId: string) => void;
-  onSessionDelete: (sessionId: string) => void;
   openSessionIds: string[];
   worktreeSessionIds: string[];
   emptyMessage?: string;
@@ -51,16 +39,11 @@ export type SidebarProps = {
   panels: SidebarPanels;
   onPanelExpanded: (panel: keyof SidebarPanels, expanded: boolean) => void;
 
-  onCreateSession: (options?: SessionCreationOptions) => void;
   openAppIds: string[];
   onAppOpen: (appId: string, toggleInWorkspace: boolean) => void;
   onAppOpenInHyper: (appId: string) => void;
   openChannelIds: string[];
   onChannelOpen: (channelId: string, toggleInWorkspace: boolean) => void;
-  onToggleHyper: () => void;
-  isHyperOpen: boolean;
-  onOpenInbox: () => void;
-  isInboxOpen: boolean;
 
   /**
    * Desktop only, and the presence of this is what makes the sidebar
@@ -69,12 +52,6 @@ export type SidebarProps = {
    * collapses at all.
    */
   collapsible?: SidebarCollapseControl;
-
-  onToggleTerminal: () => void;
-  isTerminalOpen: boolean;
-
-  onOpenFile: (path: string) => void;
-  onOpenScreen: (screenId: string) => Promise<void>;
 
   className?: string;
 };
@@ -94,8 +71,6 @@ export function Sidebar({
   sessions,
   isSessionsLoading,
   onSessionSelect,
-  onSessionRename,
-  onSessionDelete,
   openSessionIds,
   worktreeSessionIds,
   emptyMessage,
@@ -103,37 +78,15 @@ export function Sidebar({
   panels,
   onPanelExpanded,
 
-  onCreateSession,
   openAppIds,
   onAppOpen,
   onAppOpenInHyper,
   openChannelIds,
   onChannelOpen,
-  onToggleHyper,
-  isHyperOpen,
-  onOpenInbox,
-  isInboxOpen,
 
   collapsible,
-  onToggleTerminal,
-  isTerminalOpen,
-  onOpenFile,
-  onOpenScreen,
   className,
 }: SidebarProps) {
-  const [settingsOpen, setSettingsOpen] = useState(false);
-  // The file browser opens at a row's directory, or wherever it defaults from the footer.
-  const [browsing, setBrowsing] = useState<{ directory?: string }>();
-  const [browsingScreens, setBrowsingScreens] = useState(false);
-  const [createAutomationOpen, setCreateAutomationOpen] = useState(false);
-  const [createChannelOpen, setCreateChannelOpen] = useState(false);
-
-  const creationActions = {
-    onCreateSession,
-    onCreateAutomation: () => setCreateAutomationOpen(true),
-    onCreateChannel: () => setCreateChannelOpen(true),
-  };
-
   // Only a collapsible sidebar pins the collapse toggle and settings actions
   // outside its two layouts, and only it has a rail for them to head and foot.
   const collapsed = collapsible?.collapsed ?? false;
@@ -153,10 +106,7 @@ export function Sidebar({
           // toggle lands on one pixel in both layouts.
           className="absolute top-3 left-2.5 z-10 flex h-8 items-center"
         >
-          <CollapseToggle
-            collapsed={collapsed}
-            onToggle={() => collapsible.onCollapsedChange(!collapsed)}
-          />
+          <CollapseToggle />
         </div>
       )}
 
@@ -173,7 +123,6 @@ export function Sidebar({
           filter={filter}
           onFilterChange={onFilterChange}
           sessionCount={sessions.length}
-          {...creationActions}
         />
 
         <div className="min-h-0 min-w-0 flex flex-col bg-panel">
@@ -182,9 +131,6 @@ export function Sidebar({
             sessions={sessions}
             isLoading={isSessionsLoading}
             onSessionSelect={onSessionSelect}
-            onSessionRename={onSessionRename}
-            onSessionDelete={onSessionDelete}
-            onBrowseDirectory={(directory) => setBrowsing({ directory })}
             openSessionIds={openSessionIds}
             worktreeSessionIds={worktreeSessionIds}
             emptyMessage={emptyMessage}
@@ -195,8 +141,8 @@ export function Sidebar({
             onExpandedChange={(expanded) => onPanelExpanded("channels", expanded)}
             openChannelIds={openChannelIds}
             onChannelOpen={onChannelOpen}
-            onBrowseDirectory={(directory) => setBrowsing({ directory })}
-            onCreate={() => setCreateChannelOpen(true)}
+            onBrowseDirectory={(directory) => openWorkspaceDialog({ kind: "files", directory })}
+            onCreate={() => openWorkspaceDialog({ kind: "channel" })}
           />
 
           <AppsPanel
@@ -212,80 +158,22 @@ export function Sidebar({
             onExpandedChange={(expanded) => onPanelExpanded("automations", expanded)}
             openSessionIds={openSessionIds}
             onSessionOpen={(sessionId) => onSessionSelect(sessionId, false)}
-            onCreate={() => setCreateAutomationOpen(true)}
+            onCreate={() => openWorkspaceDialog({ kind: "automation" })}
           />
         </div>
 
-        <SidebarFooter
-          leadingSlot={
-            collapsible ? (
-              <ActionSpacer />
-            ) : (
-              <SettingsButton onOpenSettings={() => setSettingsOpen(true)} />
-            )
-          }
-          onBrowseFiles={() => setBrowsing({})}
-          onBrowseScreens={() => setBrowsingScreens(true)}
-          onToggleHyper={onToggleHyper}
-          isHyperOpen={isHyperOpen}
-          onOpenInbox={onOpenInbox}
-          isInboxOpen={isInboxOpen}
-          onToggleTerminal={onToggleTerminal}
-          isTerminalOpen={isTerminalOpen}
-        />
+        <SidebarFooter leadingSlot={collapsible ? <ActionSpacer /> : <SettingsButton />} />
       </div>
 
-      {collapsible && (
-        <SidebarRail
-          collapsed={collapsed}
-          className={layerClass(collapsed)}
-          {...creationActions}
-          onBrowseFiles={() => setBrowsing({})}
-          onBrowseScreens={() => setBrowsingScreens(true)}
-          onToggleHyper={onToggleHyper}
-          isHyperOpen={isHyperOpen}
-          onToggleTerminal={onToggleTerminal}
-          isTerminalOpen={isTerminalOpen}
-        />
-      )}
+      {collapsible && <SidebarRail collapsed={collapsed} className={layerClass(collapsed)} />}
 
       {collapsible && (
         <div className="absolute bottom-3 left-2.5 z-10 flex">
-          <SettingsButton onOpenSettings={() => setSettingsOpen(true)} />
+          <SettingsButton />
         </div>
       )}
     </div>
   );
 
-  return (
-    <>
-      {collapsible ? <SidebarResizer {...collapsible}>{body}</SidebarResizer> : body}
-
-      <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
-
-      <FileBrowserDialog
-        open={browsing !== undefined}
-        onOpenChange={(open) => {
-          if (!open) setBrowsing(undefined);
-        }}
-        initialPath={browsing?.directory}
-        title="Open a file"
-        onOpenFile={onOpenFile}
-      />
-      <ScreenBrowserDialog
-        open={browsingScreens}
-        onOpenChange={setBrowsingScreens}
-        onOpenScreen={onOpenScreen}
-      />
-
-      {createAutomationOpen && <AutomationDialog onOpenChange={setCreateAutomationOpen} />}
-
-      {createChannelOpen && (
-        <ChannelDialog
-          onOpenChange={setCreateChannelOpen}
-          onCreated={(channelId) => onChannelOpen(channelId, false)}
-        />
-      )}
-    </>
-  );
+  return collapsible ? <SidebarResizer {...collapsible}>{body}</SidebarResizer> : body;
 }

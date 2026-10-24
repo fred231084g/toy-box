@@ -68,10 +68,17 @@ export function SessionPreview({
         onMouseEnter={onMouseEnter}
         onMouseLeave={onMouseLeave}
       >
-        <Suspense>
-          <PreviewSessionPane key={sessionId} sessionId={sessionId} mode="passive" />
-        </Suspense>
+        <SessionPreviewPane sessionId={sessionId} />
       </PopoverContent>
     </Popover>
+  );
+}
+
+/** A session's transcript as a read-only preview, loading the pane only once it's shown. */
+export function SessionPreviewPane({ sessionId }: { sessionId: string }) {
+  return (
+    <Suspense>
+      <PreviewSessionPane key={sessionId} sessionId={sessionId} mode="passive" />
+    </Suspense>
   );
 }

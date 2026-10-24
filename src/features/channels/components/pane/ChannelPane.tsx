@@ -1,16 +1,21 @@
 import { useRef, useState } from "react";
 import { CatchBoundary } from "@tanstack/react-router";
-import { AlertCircle } from "lucide-react";
+import { AlertCircle, MessagesSquare, UserRound } from "lucide-react";
 import { channelAgentIdentity, channelLead } from "@channels/model";
 import { useChannel } from "@channels/useChannel";
 import type { PaneVariant } from "@workspace/components/panes/shell/WorkspacePaneView";
+import { PaneViewMenu } from "@workspace/components/panes/shell/PaneViewMenu";
 import { TranscriptSkeleton } from "@/shared/messages/TranscriptSkeleton";
 import { ChannelComposer, type ChannelComposerHandle } from "./ChannelComposer";
 import { ChannelPaneProvider } from "./ChannelPaneContext";
 import { ChannelOverview } from "./overview/ChannelOverview";
 import { ChannelTranscript, type ChannelTranscriptHandle } from "./transcript/ChannelTranscript";
 import type { TranscriptView } from "./transcript/transcriptRows";
-import { TranscriptViewMenu } from "./transcript/TranscriptViewMenu";
+
+const TRANSCRIPT_VIEWS = [
+  { value: "all", label: "All messages", Icon: MessagesSquare },
+  { value: "yours", label: "Your messages", Icon: UserRound },
+] as const;
 
 export function ChannelPane({
   channelId,
@@ -71,7 +76,7 @@ function ChannelContent({
             artifacts={state.artifacts}
             routines={state.routines}
             variant={variant}
-            actions={<TranscriptViewMenu view={view} onViewChange={setView} variant={variant} />}
+            actions={<PaneViewMenu view={view} views={TRANSCRIPT_VIEWS} onViewChange={setView} />}
           />
         )}
         <div className="col-start-1 row-start-1 min-h-0">

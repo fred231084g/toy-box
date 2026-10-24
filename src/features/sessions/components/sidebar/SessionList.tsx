@@ -25,9 +25,6 @@ type SessionListProps = {
   sessions: Session[];
   isLoading: boolean;
   onSessionSelect: (sessionId: string, toggleInWorkspace: boolean) => void;
-  onSessionRename: (sessionId: string) => void;
-  onSessionDelete: (sessionId: string) => void;
-  onBrowseDirectory: (directory: string) => void;
   openSessionIds: string[];
   worktreeSessionIds: string[];
   emptyMessage?: string;
@@ -38,9 +35,6 @@ export function SessionList({
   sessions,
   isLoading,
   onSessionSelect,
-  onSessionRename,
-  onSessionDelete,
-  onBrowseDirectory,
   openSessionIds,
   worktreeSessionIds,
   emptyMessage,
@@ -72,9 +66,6 @@ export function SessionList({
         session={session}
         onSelect={onSessionSelect}
         onPinToggle={isChild ? undefined : handleSessionPinToggle}
-        onRename={onSessionRename}
-        onBrowseDirectory={onBrowseDirectory}
-        onDelete={onSessionDelete}
         isActive={openSessionIds.includes(session.id)}
         isPinned={!isChild && pinnedSessionIdSet.has(session.id)}
         isWorktree={worktreeSessionIds.includes(session.id)}

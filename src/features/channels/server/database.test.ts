@@ -207,6 +207,70 @@ describe("channel task edits", () => {
     expect((await channels.getChannel(channel.id))?.tasks).toEqual([{ ...task, artifactId, diff }]);
   });
 
+  test("the due check claims only eligible nested check-ins, once across concurrent polls", async () => {
+    setSystemTime(new Date("2026-10-23T15:00:00.000Z"));
+    onTestFinished(() => setSystemTime());
+    const { channels, channel, task } = await setup();
+    const checkInAt = "2026-10-23T15:05:00.000Z";
+    const nextCheckInAt = "2026-10-23T15:08:00.000Z";
+    const ids = ["due", "later", "blocked", "done", "pending", "removed", "unassigned", "cleared"];
+    await channels.updateChannel(channel.id, {
+      tasks: [
+        {
+          ...task,
+          children: ids.map((id) => ({
+            id,
+            title: id,
+            status: "in_progress",
+            ownerId: channel.id,
+            checkInAt: id === "later" ? "2026-10-23T15:10:00.000Z" : checkInAt,
+          })),
+        },
+      ],
+    });
+    await channels.editTasks(channel.id, {
+      operations: [
+        { type: "update", taskId: "blocked", patch: { status: "blocked" } },
+        { type: "update", taskId: "done", patch: { status: "done" } },
+        { type: "update", taskId: "pending", patch: { status: "pending" } },
+        { type: "remove", taskId: "removed" },
+        { type: "update", taskId: "unassigned", patch: { ownerId: null } },
+        { type: "update", taskId: "cleared", patch: { checkInAt: null } },
+      ],
+    });
+    expect((await channels.claimDueWakes(new Date("2026-10-23T15:04:59.999Z"))).checkIns).toEqual(
+      [],
+    );
+    const dueAt = new Date(checkInAt);
+    const results = await Promise.all([
+      channels.claimDueWakes(dueAt),
+      channels.claimDueWakes(dueAt),
+    ]);
+    expect(results.flatMap(({ checkIns }) => checkIns)).toEqual([
+      { agentId: channel.id, taskId: "due", title: "due", checkInAt },
+    ]);
+    const after = (await channels.getChannel(channel.id))!;
+    expect(after.tasks[0]!.children![0]).toEqual({
+      id: "due",
+      title: "due",
+      status: "in_progress",
+      ownerId: channel.id,
+      startedAt: "2026-10-23T15:00:00.000Z",
+    });
+    expect((await channels.claimDueWakes(new Date("2026-10-23T15:06:00.000Z"))).checkIns).toEqual(
+      [],
+    );
+    await channels.editTasks(channel.id, {
+      operations: [{ type: "update", taskId: "due", patch: { checkInAt: nextCheckInAt } }],
+    });
+    expect((await channels.claimDueWakes(new Date("2026-10-23T15:06:00.000Z"))).checkIns).toEqual(
+      [],
+    );
+    expect((await channels.claimDueWakes(new Date(nextCheckInAt))).checkIns).toEqual([
+      { agentId: channel.id, taskId: "due", title: "due", checkInAt: nextCheckInAt },
+    ]);
+  });
+
   test("out-of-channel references reject replacements and roll back entire edit batches", async () => {
     const { channels, channel: other, task, artifactId } = await setup();
     const channel = await createStoredChannel(channels, { name: "Other", ...CHANNEL_DEFAULTS });
@@ -603,6 +667,7 @@ describe("channel database", () => {
         id: "build",
         title: "Build the product",
         status: "in_progress",
+        startedAt: update.channel.tasks[0]!.startedAt,
         children: [{ id: "verify", title: "Verify the preview", status: "pending" }],
       },
     ]);

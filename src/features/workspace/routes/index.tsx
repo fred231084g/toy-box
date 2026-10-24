@@ -1,4 +1,3 @@
-import { useHotkey } from "@tanstack/react-hotkeys";
 import { createFileRoute, useNavigate, useRouterState, ClientOnly } from "@tanstack/react-router";
 import { useQuery, useSuspenseQuery } from "@tanstack/react-query";
 import { createIsomorphicFn } from "@tanstack/react-start";
@@ -12,8 +11,11 @@ import { useWarmSessionSnapshots } from "@sessions/useWarmSessionSnapshots";
 import { useWorkspaceSync } from "@workspace/hooks/useWorkspaceSync";
 import { useWorkspaceSelector } from "@workspace/hooks/state";
 import { useViewport } from "@/shared/hooks/useViewport";
-import { NameDialog } from "@/shared/sidebar/NameDialog";
+import { CommandProvider } from "@/shared/commands/CommandProvider";
 import type { SidebarProps } from "@workspace/components/sidebar/Sidebar";
+import { WorkspaceDialogs } from "@workspace/components/WorkspaceDialogs";
+import { CommandPalette } from "@workspace/components/palette/CommandPalette";
+import { createWorkspaceCommands, type SessionCreationOptions } from "@workspace/commands";
 import {
   WorkspaceLayout,
   type WorkspaceLayoutProps,
@@ -46,7 +48,6 @@ import {
   serializeWorkspaceLayout,
   type SidebarPanels,
 } from "@workspace/model/config/layoutPrefs";
-import { sessionMutations } from "@sessions/mutations";
 import {
   filterSessionList,
   type SessionFilters,
@@ -312,6 +313,7 @@ function WorkspacePage() {
   const [terminalSize, setTerminalSize] = useState(initialLayout.terminalSize);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(initialLayout.sidebarCollapsed);
   const [isTerminalOpen, setIsTerminalOpen] = useState(initialLayout.terminalOpen);
+  const [isPaletteOpen, setIsPaletteOpen] = useState(false);
   const [sidebarPanels, setSidebarPanels] = useState<SidebarPanels>(initialLayout.panels);
   const [isChannelOverviewPinned, setIsChannelOverviewPinned] = useState(
     initialLayout.channelOverviewPinned,
@@ -388,7 +390,7 @@ function WorkspacePage() {
   }
 
   // Create a draft session, optionally with an initial artifact or alongside the workspace.
-  const handleCreateSession: SidebarProps["onCreateSession"] = (options = {}) => {
+  function handleCreateSession(options: SessionCreationOptions = {}) {
     const id = createSession(options.artifact ? { artifact: options.artifact } : undefined);
 
     if (options.addToWorkspace && openPanes.length > 0 && openPanes.length < MAX_WORKSPACE_PANES) {
@@ -398,7 +400,7 @@ function WorkspacePage() {
       // Replace current view
       updateSelectedSessionIds([id], { replaceWorkspace: true });
     }
-  };
+  }
 
   // Close panes when their session leaves the catalog, including an older session losing its pin.
   useEffect(() => {
@@ -464,7 +466,6 @@ function WorkspacePage() {
     });
   }, [channels, navigate, selectedChannelIds]);
 
-  const [renameTargetId, setRenameTargetId] = useState<string | null>(null);
   const [filter, setFilter] = useState<SessionFilters>({
     query: "",
     hiddenProviders: [],
@@ -475,17 +476,6 @@ function WorkspacePage() {
   function toggleTerminal() {
     setIsTerminalOpen((prev) => !prev);
   }
-
-  // Global keyboard shortcuts
-  useHotkey("Mod+B", toggleSidebar, {
-    enabled: !isMobileLayout,
-    requireReset: true,
-  });
-  useHotkey("Control+N", () => handleCreateSession(), {
-    enabled: hasModels,
-    requireReset: true,
-  });
-  useHotkey("Control+`", toggleTerminal, { requireReset: true });
 
   function handleTerminalClose() {
     setIsTerminalOpen(false);
@@ -514,16 +504,6 @@ function WorkspacePage() {
     if (selectedSessionIds.includes(sessionIdToDelete)) {
       updateSelectedSessionIds(selectedSessionIds.filter((id) => id !== sessionIdToDelete));
     }
-  }
-
-  const renameTargetSession = sessions?.find((session) => session.id === renameTargetId) ?? null;
-
-  function handleSessionRename(sessionId: string) {
-    setRenameTargetId(sessionId);
-  }
-
-  function handleRenameDialogOpenChange(open: boolean) {
-    if (!open) setRenameTargetId(null);
   }
 
   function openSessionInWorkspace(sessionId: string) {
@@ -637,6 +617,16 @@ function WorkspacePage() {
     }
   }
 
+  const commands = createWorkspaceCommands({
+    togglePalette: () => setIsPaletteOpen((open) => !open),
+    sidebar: isMobileLayout ? undefined : { isOpen: !isSidebarCollapsed, toggle: toggleSidebar },
+    terminal: { isOpen: isTerminalOpen, toggle: toggleTerminal },
+    hyper: { isOpen: isHyperOpen, toggle: toggleHyper },
+    inbox: { isOpen: isInboxOpen, open: handleOpenInbox },
+    hasModels,
+    createSession: handleCreateSession,
+  });
+
   function handleMobileWorkspaceBack() {
     workspaceSurfaces.main.panePublications.actions.clearLinkedPanes(INBOX_PANE.id);
     setIsSidebarCollapsed(false);
@@ -677,8 +667,6 @@ function WorkspacePage() {
     sessions: filteredSessions,
     isSessionsLoading,
     onSessionSelect: handleSessionSelect,
-    onSessionRename: handleSessionRename,
-    onSessionDelete: handleSessionDelete,
     openSessionIds: sidebarOpenSessionIds,
     worktreeSessionIds,
     emptyMessage:
@@ -687,20 +675,11 @@ function WorkspacePage() {
         : undefined,
     panels: sidebarPanels,
     onPanelExpanded: handlePanelExpanded,
-    onCreateSession: handleCreateSession,
     openAppIds: selectedAppIds,
     onAppOpen: handleAppOpen,
     onAppOpenInHyper: handleAppOpenInHyper,
     openChannelIds: selectedChannelIds,
     onChannelOpen: handleChannelOpen,
-    onToggleHyper: toggleHyper,
-    isHyperOpen,
-    onOpenInbox: handleOpenInbox,
-    isInboxOpen,
-    onOpenFile: openFile,
-    onOpenScreen: openScreen,
-    onToggleTerminal: toggleTerminal,
-    isTerminalOpen,
   } satisfies SidebarProps;
 
   const mobileLayoutProps = {
@@ -751,7 +730,7 @@ function WorkspacePage() {
   } satisfies WorkspaceLayoutProps["desktop"];
 
   return (
-    <>
+    <CommandProvider commands={commands}>
       <WorkspaceSurfaceProvider
         surface="main"
         panes={openPanes}
@@ -768,17 +747,27 @@ function WorkspacePage() {
           mobile={mobileLayoutProps}
           desktop={desktopLayoutProps}
         />
-      </WorkspaceSurfaceProvider>
-      {renameTargetSession && (
-        <NameDialog
-          key={renameTargetSession.id}
-          name={renameTargetSession.title ?? ""}
-          title="Rename session"
-          description="Change how this session appears in the session list."
-          mutation={sessionMutations.renameSession(renameTargetSession.id)}
-          onOpenChange={handleRenameDialogOpenChange}
+        <CommandPalette
+          open={isPaletteOpen}
+          onOpenChange={setIsPaletteOpen}
+          sessions={listedSessions}
+          openSessionIds={openSessionIds}
+          navigation={{
+            openSession: handleSessionSelect,
+            addSession: openSessionInWorkspace,
+            openChannel: handleChannelOpen,
+            openApp: handleAppOpen,
+            addApp: openAppInMainSurface,
+            openFile,
+          }}
         />
-      )}
-    </>
+      </WorkspaceSurfaceProvider>
+      <WorkspaceDialogs
+        onOpenFile={openFile}
+        onOpenScreen={openScreen}
+        onChannelOpen={handleChannelOpen}
+        onSessionDelete={handleSessionDelete}
+      />
+    </CommandProvider>
   );
 }

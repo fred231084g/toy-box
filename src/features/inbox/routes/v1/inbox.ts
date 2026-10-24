@@ -10,7 +10,7 @@ const inboxInputSchema = z.object({
 
 type InboxInput = z.infer<typeof inboxInputSchema>;
 
-export const Route = createFileRoute("/api/inbox")({
+export const Route = createFileRoute("/api/v1/inbox")({
   server: {
     handlers: {
       POST: async ({ request }) => {

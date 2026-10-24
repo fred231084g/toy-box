@@ -18,6 +18,7 @@ import {
   agentRoleSchema,
   CHANNEL_LEAD_PROFILE,
   extractAgentMentionHandles,
+  type AgentAvatar,
 } from "./agent";
 
 export * from "./agent";
@@ -149,10 +150,12 @@ const channelMemberSchema = channelAgentMetadataSchema
   .strict();
 export type ChannelMember = z.output<typeof channelMemberSchema>;
 
-export type ChannelAgent = Pick<ChannelMember, "id" | "name" | "role" | "avatar" | "status">;
+export type ChannelAgent = Pick<ChannelMember, "id" | "name" | "role" | "status"> & {
+  avatar?: AgentAvatar;
+};
 export type ChannelLead = ChannelAgent & {
   role: string;
-  avatar: NonNullable<ChannelAgent["avatar"]>;
+  avatar: AgentAvatar;
 };
 
 export function compareChannelAgents(

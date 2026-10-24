@@ -56,10 +56,10 @@ After opening your HTTPS URL in a mobile browser, you can add Toy Box to your ho
 
 ## Inbox Webhook
 
-With that protected HTTPS URL in place, Toy Box's inbox can accept external tasks by means of simply sending a `POST` to the following URL: `https://<toy-box-host>/api/inbox`. For automated webhook calls through Cloudflare Access, configure [service-token headers and a Service Auth policy](https://developers.cloudflare.com/cloudflare-one/access-controls/service-credentials/service-tokens/).
+With that protected HTTPS URL in place, Toy Box's inbox can accept external tasks by means of simply sending a `POST` to the following URL: `https://<toy-box-host>/api/v1/inbox`. For automated webhook calls through Cloudflare Access, configure [service-token headers and a Service Auth policy](https://developers.cloudflare.com/cloudflare-one/access-controls/service-credentials/service-tokens/).
 
 ```sh
-curl -X POST "https://<toy-box-host>/api/inbox" \
+curl -X POST "https://<toy-box-host>/api/v1/inbox" \
   -H "Content-Type: application/json" \
   -d '{"prompt":"Summarize the latest changes and send the result to my Inbox."}'
 ```
@@ -73,7 +73,7 @@ The webhook supports both JSON and multipart form data:
 
 The same endpoint works with several ready-made integrations:
 
-- **Browser extension:** Follow [`browser/README.md`](browser/README.md), then set its server URL to the Toy Box base URL without `/api/inbox`. It can include the current page, selected text, and a viewport screenshot, with toolbar, shortcut, and context-menu actions.
+- **Browser extension:** Follow [`browser/README.md`](browser/README.md), then set its server URL to the Toy Box base URL without `/api/v1/inbox`. It can include the current page, selected text, and a viewport screenshot, with toolbar, shortcut, and context-menu actions.
 - **Pebble Index 01:** In CoreApp, open **Index Settings → Webhook**, use the full Inbox URL, and choose **Transcription only**. Toy Box accepts CoreApp's `transcription` field directly.
 - **QuickCast Hook:** Install it from the [App Store](https://apps.apple.com/us/app/quickcast-hook/id6756369952), then create a `POST` multipart webhook using the full Inbox URL. Enable on-device transcription, name its field `transcription`, and use `attachments` as the file field when sending audio or images.
 

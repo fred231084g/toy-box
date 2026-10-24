@@ -1,3 +1,4 @@
+import type { CSSProperties } from "react";
 import { UserRoundX } from "lucide-react";
 import type { ChannelAgentIdentity } from "@channels/model";
 import { cn } from "@/shared/utils";
@@ -10,20 +11,23 @@ export function AgentAvatar({
   agent: Pick<ChannelAgentIdentity, "name" | "avatar" | "deleted">;
   className?: string;
 }) {
+  const style: (CSSProperties & { "--identity": string }) | undefined = avatar && {
+    "--identity": avatar.color,
+    color: avatar.ink ?? `contrast-color(${avatar.color})`,
+  };
+
   return (
     <span
       className={cn(
         "relative inline-flex size-8 shrink-0 items-center justify-center overflow-hidden rounded-full",
         deleted
           ? "bg-muted text-muted-foreground"
-          : !avatar && "bg-cyan-500/15 text-cyan-700 dark:text-cyan-300",
+          : avatar
+            ? "identity-fill"
+            : "bg-cyan-500/15 text-cyan-700 dark:text-cyan-300",
         className,
       )}
-      style={
-        avatar
-          ? { backgroundColor: avatar.color, color: `contrast-color(${avatar.color})` }
-          : undefined
-      }
+      style={style}
       aria-hidden
     >
       {deleted ? (

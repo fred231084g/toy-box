@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { type CSSProperties, useState } from "react";
 import { Hash, Plus } from "lucide-react";
 import { WorkingAgents } from "@channels/components/agents/WorkingAgents";
 import { useChannels } from "@channels/useChannels";
@@ -12,6 +12,9 @@ import { ChannelDialog } from "../ChannelDialog";
 import { ChannelMenuItems } from "../ChannelMenuItems";
 import { channelSidebarStatus } from "./status";
 import { DeleteChannelDialog } from "../DeleteChannelDialog";
+
+/** The channel icon's identity fill, cyan in both appearances. */
+const CHANNEL_ICON_STYLE: CSSProperties & { "--identity": string } = { "--identity": "#0891b2" };
 
 export function ChannelsPanel({
   isExpanded,
@@ -94,8 +97,11 @@ export function ChannelsPanel({
                 </span>
               }
               icon={
-                <span className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-cyan-500/15 text-cyan-700 dark:text-cyan-300">
-                  <Hash className="size-4" />
+                <span
+                  className="identity-fill flex size-7 shrink-0 items-center justify-center rounded-full text-white"
+                  style={CHANNEL_ICON_STYLE}
+                >
+                  <Hash className="size-4" strokeWidth={2.5} />
                 </span>
               }
               time={<RelativeTime date={channel.updatedAt} />}

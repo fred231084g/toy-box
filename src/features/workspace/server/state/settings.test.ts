@@ -11,6 +11,7 @@ test("persists one complete settings document", async () => {
     ...DEFAULT_SETTINGS,
     accentColor: "#123abc" as const,
     defaultModel: { provider: "copilot", name: "gpt-5", reasoningEffort: "high" },
+    defaultSessionView: "responses" as const,
     terminalShell: "/bin/zsh",
     useWorktree: true,
     pinnedSessionIds: ["session-a"],

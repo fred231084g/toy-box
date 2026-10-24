@@ -13,7 +13,7 @@ export function ScrollToBottomButton({
   return (
     <Button
       variant="secondary"
-      className="absolute bottom-4 left-1/2 -translate-x-1/2 rounded-full bg-background shadow-lg"
+      className="absolute bottom-4 left-1/2 -translate-x-1/2 rounded-full border bg-background shadow-lg"
       onClick={onScrollToBottom}
     >
       <ArrowDown className="h-4 w-4" />

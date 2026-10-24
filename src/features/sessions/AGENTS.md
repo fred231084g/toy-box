@@ -144,6 +144,16 @@ SDK canvases, the transcript, composer, location controls, and sidebar list. Com
 mutation observers and browser-local interaction state. Reusable managed-session surfaces such as
 Inbox may consume the composer or location controls directly.
 
+Active session panes offer a pane-local transcript view, initialized when the pane opens from
+the workspace's `defaultSessionView` setting (All messages by default). Responses
+shows user and assistant text without system messages, ordinary tool calls, or reasoning.
+Question cards and their recorded answers remain conversation, and assistant errors
+and the activity indicator stay visible. `components/transcript/transcriptView.ts` derives the
+visible messages without changing session state; filtering precedes transcript windowing.
+Switching views lands the transcript afresh without restarting the session or its subscription.
+The pane's override is neither persisted nor synchronized across clients. Changing the workspace
+default does not change already-open panes; overlays and passive previews keep the full view.
+
 The composer stacks what a session produced (artifacts newest first, plus todo progress and changed
 files) and what is waiting (queued messages) above the message being written. Sessions and Channels
 share Workspace's [`ComposerTray`](../workspace/components/outputs/ComposerTray.tsx).
@@ -171,8 +181,9 @@ read, or when empty, and it autofocuses on desktop. `<Composer draft>` edits tha
 image paste and drop, and the Enter, Shift+Enter, and empty-draft Backspace conventions after an
 open menu's keys and the host's own; each handler in that chain defers by `defaultPrevented`.
 Hosts configure it in its own terms through explicit props, since its layout is fixed: a `label`
-and `placeholder`, a `tray` above the input, `completions` (sources plus the menu that renders
-their items), the `references` it shows as pills, toolbar `controls`, and `actions`. The composer
+and `placeholder`, a `tray` as the input's top band (inside its border and focus ring),
+`completions` (sources plus the menu that renders their items), the `references` it shows as
+pills, toolbar `controls`, and `actions`. The composer
 matches, navigates, and inserts completions; hosts own their draft text and send targets. Every
 host's text is a Workspace saved draft, spread into `useComposerDraft` from `useSavedDraft`.
 `SessionComposer` reads `session:<id>`, or `inbox` when it composes new Inbox work, so neither

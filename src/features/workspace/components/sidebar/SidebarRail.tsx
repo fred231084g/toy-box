@@ -2,10 +2,9 @@ import { Separator } from "@/shared/ui/separator";
 import {
   ActionSpacer,
   BrowseMenu,
-  HyperButton,
+  HyperMenu,
   SidebarSplitButton,
   TerminalToggle,
-  type SessionCreationOptions,
 } from "./SidebarActions";
 import { SIDEBAR_COLLAPSED_WIDTH, SIDEBAR_FRAME } from "./SidebarResizer";
 import { cn } from "@/shared/utils";
@@ -22,31 +21,7 @@ const SEPARATOR = "my-1.5 h-px! w-4! bg-muted-foreground/50!";
  * so this stack opens and closes with the shapes those actions occupy when
  * expanded, leaving each pin a hole to land in rather than measuring around it.
  */
-export function SidebarRail({
-  collapsed,
-  className,
-  onCreateSession,
-  onCreateAutomation,
-  onCreateChannel,
-  onBrowseFiles,
-  onBrowseScreens,
-  onToggleHyper,
-  isHyperOpen,
-  onToggleTerminal,
-  isTerminalOpen,
-}: {
-  collapsed: boolean;
-  className?: string;
-  onCreateSession: (options?: SessionCreationOptions) => void;
-  onCreateAutomation: () => void;
-  onCreateChannel: () => void;
-  onBrowseFiles: () => void;
-  onBrowseScreens: () => void;
-  onToggleHyper: () => void;
-  isHyperOpen: boolean;
-  onToggleTerminal: () => void;
-  isTerminalOpen: boolean;
-}) {
+export function SidebarRail({ collapsed, className }: { collapsed: boolean; className?: string }) {
   return (
     <div
       aria-hidden={!collapsed}
@@ -67,18 +42,13 @@ export function SidebarRail({
       */}
       <ActionSpacer className="mt-1" />
       <Separator className={SEPARATOR} />
-      <SidebarSplitButton
-        variant="rail"
-        onCreateSession={onCreateSession}
-        onCreateAutomation={onCreateAutomation}
-        onCreateChannel={onCreateChannel}
-      />
+      <SidebarSplitButton variant="rail" />
 
       <div className="min-h-0 flex-1" />
 
-      <HyperButton onToggle={onToggleHyper} isOpen={isHyperOpen} />
-      <BrowseMenu onBrowseFiles={onBrowseFiles} onBrowseScreens={onBrowseScreens} side="right" />
-      <TerminalToggle isTerminalOpen={isTerminalOpen} onToggleTerminal={onToggleTerminal} />
+      <HyperMenu side="right" />
+      <BrowseMenu side="right" />
+      <TerminalToggle />
       <Separator className={SEPARATOR} />
       <ActionSpacer />
     </div>

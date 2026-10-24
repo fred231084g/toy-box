@@ -1,12 +1,8 @@
 import { codePlugins, Markdown } from "@/shared/ui/markdown";
 import { TriangleAlert } from "lucide-react";
-import type { AssistantMessage as AssistantMessageType, ToolCall } from "../../../model";
+import type { AssistantMessage as AssistantMessageType } from "../../../model";
 import { transcriptLinkComponents, transcriptRehypePlugins } from "./TranscriptFileLink";
 import { ToolCallMessage } from "./tools/ToolCallMessage";
-
-// ============================================================================
-// Assistant Message Component
-// ============================================================================
 
 export function AssistantMessage({
   message,
@@ -19,18 +15,15 @@ export function AssistantMessage({
   isBusy?: boolean;
   isLast: boolean;
 }) {
-  const hasToolCalls = message.toolCalls && message.toolCalls.length > 0;
-
-  if (!message.content && !hasToolCalls && !message.error) {
-    return null;
-  }
+  const toolCalls = message.toolCalls ?? [];
+  if (!message.content && !toolCalls.length && !message.error) return null;
 
   return (
     <div className="flex justify-start">
       <div className="max-w-full @md:max-w-[80%]">
         <div className="space-y-2">
-          {/* Text content */}
-          {message.content ? (
+          {/* Response text (intermediate or final) */}
+          {message.content && (
             <Markdown
               mode="streaming"
               isAnimating={isLast && isBusy}
@@ -41,11 +34,22 @@ export function AssistantMessage({
             >
               {message.content}
             </Markdown>
-          ) : null}
-          {/* Tool calls display */}
-          {hasToolCalls && (
-            <ToolCallsDisplay toolCalls={message.toolCalls!} isStreaming={isStreaming} />
           )}
+
+          {/* (Optional) Tool calls */}
+          {toolCalls.length > 0 && (
+            <div className="space-y-2">
+              {toolCalls.map((toolCall) => (
+                <ToolCallMessage
+                  key={toolCall.id}
+                  toolCall={toolCall}
+                  isActive={isStreaming && toolCall.result === undefined}
+                />
+              ))}
+            </div>
+          )}
+
+          {/* (Optional) Agent error (e.g. rate limits hit) */}
           {message.error && (
             <div
               role="alert"
@@ -59,60 +63,6 @@ export function AssistantMessage({
           )}
         </div>
       </div>
-    </div>
-  );
-}
-
-// ============================================================================
-// Tool Calls Display Component
-// ============================================================================
-
-/** Deduplicates adjacent report_intent calls with the same value. */
-function deduplicateIntents(toolCalls: ToolCall[]): ToolCall[] {
-  let lastIntentValue: string | null = null;
-  return toolCalls.filter((tc) => {
-    if (tc.name === "report_intent") {
-      const value = tc.arguments?.intent as string;
-      if (value === lastIntentValue) return false;
-      lastIntentValue = value;
-    }
-    return true;
-  });
-}
-
-function IntentDivider({ intent }: { intent: string }) {
-  return (
-    <div className="flex items-center gap-1 pt-1 pb-3">
-      <span className="section-heading">{intent}</span>
-    </div>
-  );
-}
-
-function ToolCallsDisplay({
-  toolCalls,
-  isStreaming,
-}: {
-  toolCalls: ToolCall[];
-  isStreaming: boolean;
-}) {
-  const deduplicated = deduplicateIntents(toolCalls);
-
-  return (
-    <div className="space-y-2">
-      {deduplicated.map((toolCall) => {
-        if (toolCall.name === "report_intent") {
-          const intent = (toolCall.arguments?.intent as string) || "Working...";
-          return <IntentDivider key={toolCall.id} intent={intent} />;
-        }
-
-        return (
-          <ToolCallMessage
-            key={toolCall.id}
-            toolCall={toolCall}
-            isActive={isStreaming && toolCall.result === undefined}
-          />
-        );
-      })}
     </div>
   );
 }

@@ -4,6 +4,30 @@ import { Checklist } from "@/shared/ui/checklist";
 import { channelTaskItems } from "./channelTaskItems";
 
 test.each([
+  ["2026-10-23T15:12:30.000Z", "12m / 8m"],
+  ["2026-10-23T15:20:01.000Z", "20m / 0m"],
+])("task age and check-in countdown use independent timestamps at %s", (now, expected) => {
+  const items = channelTaskItems(
+    {
+      tasks: [
+        {
+          id: "work",
+          title: "Work",
+          status: "in_progress",
+          startedAt: "2026-10-23T15:00:00.000Z",
+          checkInAt: "2026-10-23T15:20:00.000Z",
+        },
+      ],
+      owners: [],
+      artifacts: [],
+      onArtifactOpen: () => {},
+    },
+    Date.parse(now),
+  );
+  expect(renderToStaticMarkup(<Checklist items={items} />)).toContain(expected);
+});
+
+test.each([
   { added: 12_345, removed: 0, addedText: "+12.3K", removedText: "\u22120" },
   { added: 0, removed: 12_345, addedText: "+0", removedText: "\u221212.3K" },
 ])(

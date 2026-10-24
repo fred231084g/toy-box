@@ -42,7 +42,7 @@ export function Composer<Item extends CompletionItem>({
   /** The input's accessible name. */
   label: string;
   placeholder?: string;
-  /** Docked above the input, such as outputs and queued messages. */
+  /** The input's top band, inside its border and focus ring, such as outputs and queued messages. */
   tray?: ReactNode;
   completions?: ComposerCompletions<Item>;
   /** Which references in the draft appear as pills; the rest stay text. */
@@ -70,8 +70,8 @@ export function Composer<Item extends CompletionItem>({
       suppressHydrationWarning
     >
       <input {...attachments.fileInputProps} suppressHydrationWarning />
-      {tray}
       <InputGroup className={cn(attachments.isDragging && "border-ring ring-[3px] ring-ring/50")}>
+        {tray}
         <ImageAttachments
           attachments={attachments.items}
           pendingCount={attachments.pendingCount}

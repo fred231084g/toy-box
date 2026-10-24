@@ -1,3 +1,9 @@
+## 📅 v0.3.2 (10/21/26)
+
+- Introduced a command palette for automating common tasks
+- Added a session view mode, which allows focusing sessions to just responses, and therefore, hiding tool calls and agent reasoning.
+- Add running times + scheduled check-ins for in-progress channel tasks.
+
 ## 📅 v0.3.1 (10/20/26)
 
 - The session composer now shows a context meter when the context window is >50% used

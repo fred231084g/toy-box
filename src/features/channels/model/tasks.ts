@@ -11,6 +11,13 @@ export const channelTaskSchema = z
     ),
     title: z.string().trim().min(1).max(240).describe("A concise outcome or next step."),
     status: z.enum(["pending", "in_progress", "blocked", "done"]),
+    startedAt: z.iso.datetime().optional().describe("Server-owned start time; do not set it."),
+    checkInAt: z.iso
+      .datetime()
+      .optional()
+      .describe(
+        "Optional UTC check-in time, independent of startedAt. Only the lead sets it; when due, an in-progress task's owner is privately prompted and the check-in is cleared.",
+      ),
     ownerId: z
       .string()
       .trim()
@@ -37,6 +44,44 @@ export const channelTaskSchema = z
   .strict();
 
 export type ChannelTask = z.output<typeof channelTaskSchema>;
+
+/** Reconcile server-owned timing by stable ID against the last committed tree. */
+export function reconcileChannelTaskTiming(
+  previous: readonly ChannelTask[],
+  next: readonly ChannelTask[],
+  now: string,
+): ChannelTask[] {
+  const byId = new Map<string, ChannelTask>();
+  const remember = (tasks: readonly ChannelTask[]) => {
+    for (const task of tasks) {
+      byId.set(task.id, task);
+      if (task.children) remember(task.children);
+    }
+  };
+  remember(previous);
+  const visit = (tasks: readonly ChannelTask[]): ChannelTask[] =>
+    tasks.map(({ startedAt: _startedAt, checkInAt, children, ...task }) => {
+      const before = byId.get(task.id);
+      const startedAt =
+        task.status === "pending" || task.status === "done"
+          ? undefined
+          : (before?.startedAt ?? (task.status === "in_progress" ? now : undefined));
+      return {
+        ...task,
+        ...(startedAt ? { startedAt } : {}),
+        ...(task.status !== "done" && checkInAt ? { checkInAt } : {}),
+        ...(children ? { children: visit(children) } : {}),
+      };
+    });
+  return visit(next);
+}
+
+export function channelTaskElapsedMinutes(
+  { startedAt }: Pick<ChannelTask, "startedAt">,
+  now: number,
+): number | undefined {
+  return startedAt ? Math.max(0, Math.floor((now - Date.parse(startedAt)) / 60_000)) : undefined;
+}
 
 export const channelTasksSchema = z
   .array(channelTaskSchema)
@@ -73,12 +118,13 @@ export function channelTasksDiff(tasks: readonly ChannelTask[]): DiffStats | und
 }
 
 const taskPatchSchema = channelTaskSchema
-  .omit({ id: true, children: true })
+  .omit({ id: true, children: true, startedAt: true })
   .partial()
   .extend({
     ownerId: channelTaskSchema.shape.ownerId.nullable(),
     artifactId: channelTaskSchema.shape.artifactId.nullable(),
     diff: channelTaskSchema.shape.diff.nullable(),
+    checkInAt: channelTaskSchema.shape.checkInAt.nullable(),
   })
   .refine(hasChanges, { message: "Change at least one task field." });
 

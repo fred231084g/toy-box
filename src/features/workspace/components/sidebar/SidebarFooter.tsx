@@ -4,36 +4,23 @@ import { inboxQueries } from "@inbox/queries";
 import { Separator } from "@/shared/ui/separator";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/shared/ui/tooltip";
 import { useWorkspaceSelector } from "@workspace/hooks/state";
-import { BrowseMenu, HyperButton, TerminalToggle } from "./SidebarActions";
+import { executeCommand } from "@/shared/commands/command";
+import { useCommand } from "@/shared/commands/CommandProvider";
+import { BrowseMenu, HyperMenu, TerminalToggle } from "./SidebarActions";
 
 export function SidebarFooter({
   leadingSlot,
-  onBrowseFiles,
-  onBrowseScreens,
-  onToggleHyper,
-  isHyperOpen,
-  onOpenInbox,
-  isInboxOpen,
-  onToggleTerminal,
-  isTerminalOpen,
 }: {
   /** The row's first item: an action that survives collapse, or a spacer holding its place. */
   leadingSlot?: ReactNode;
-  onBrowseFiles: () => void;
-  onBrowseScreens: () => void;
-  onToggleHyper: () => void;
-  isHyperOpen: boolean;
-  onOpenInbox: () => void;
-  isInboxOpen: boolean;
-  onToggleTerminal: () => void;
-  isTerminalOpen: boolean;
 }) {
   const appTitle = import.meta.env.VITE_APP_TITLE;
   const { data: inboxEntries } = useSuspenseQuery(inboxQueries.list());
   const hasUnreadInbox = useWorkspaceSelector((workspace) =>
     inboxEntries.some((entry) => workspace.sessionStates[entry.id]?.status === "unread"),
   );
-  const showInboxUnreadIndicator = !isInboxOpen && hasUnreadInbox;
+  const openInbox = useCommand("workspace.openInbox");
+  const showInboxUnreadIndicator = !openInbox?.checked && hasUnreadInbox;
 
   return (
     <div className="pt-3 md:pb-3 px-2.5 border-t flex items-center justify-between">
@@ -48,7 +35,7 @@ export function SidebarFooter({
             render={
               <button
                 type="button"
-                onClick={onOpenInbox}
+                onClick={() => openInbox && void executeCommand(openInbox)}
                 className="relative font-bold text-foreground transition-colors hover:text-primary"
                 aria-label={
                   showInboxUnreadIndicator ? `${appTitle}, unread inbox activity` : appTitle
@@ -68,9 +55,9 @@ export function SidebarFooter({
         </Tooltip>
       </div>
       <div className="flex items-center gap-3">
-        <HyperButton onToggle={onToggleHyper} isOpen={isHyperOpen} />
-        <BrowseMenu onBrowseFiles={onBrowseFiles} onBrowseScreens={onBrowseScreens} side="top" />
-        <TerminalToggle isTerminalOpen={isTerminalOpen} onToggleTerminal={onToggleTerminal} />
+        <HyperMenu side="top" />
+        <BrowseMenu side="top" />
+        <TerminalToggle />
       </div>
     </div>
   );

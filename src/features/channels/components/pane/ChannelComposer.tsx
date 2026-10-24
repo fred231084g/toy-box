@@ -27,7 +27,7 @@ import { useComposerDraft } from "@/shared/composers/useComposerDraft";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/shared/ui/tooltip";
 import { cn } from "@/shared/utils";
 import { useChannelPane } from "./ChannelPaneContext";
-import { channelTaskItems, TaskDiff } from "./channelTaskItems";
+import { useChannelTaskItems, TaskDiff } from "./channelTaskItems";
 import { WorkspacePreview } from "@workspace/components/outputs/WorkspacePreview";
 
 /** Starts a message from elsewhere in the pane, continuing whatever draft exists. */
@@ -93,19 +93,21 @@ export function ChannelComposer({
     else focusedPaneAtom.set(createEditorPaneId(file));
   }
 
+  const checklist = useChannelTaskItems({
+    tasks: channel?.tasks ?? [],
+    owners: agents,
+    artifacts: state?.artifacts ?? [],
+    onArtifactOpen: ({ file }) => openArtifact(file),
+    closeOnArtifactOpen: true,
+  });
+
   return (
     <Composer
       draft={draft}
       tray={
         <ComposerTray
           artifacts={artifacts ?? []}
-          checklist={channelTaskItems({
-            tasks: channel?.tasks ?? [],
-            owners: agents,
-            artifacts: state?.artifacts ?? [],
-            onArtifactOpen: ({ file }) => openArtifact(file),
-            closeOnArtifactOpen: true,
-          })}
+          checklist={checklist}
           artifactTimeLabel="Shared"
           checklistLabel="Tasks"
           checklistHeaderDetail={diff && <TaskDiff diff={diff} />}

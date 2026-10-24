@@ -14,25 +14,19 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/shared/ui/dropdown-menu";
-import { SidebarSplitButton, type SessionCreationOptions } from "./SidebarActions";
+import { SidebarSplitButton } from "./SidebarActions";
 
 export function SidebarHeader({
   leadingSlot,
   filter,
   onFilterChange,
   sessionCount,
-  onCreateSession,
-  onCreateAutomation,
-  onCreateChannel,
 }: {
   /** The row's first item: an action that survives collapse, or a spacer holding its place. */
   leadingSlot?: ReactNode;
   filter: SessionFilters;
   onFilterChange: (value: SessionFilters) => void;
   sessionCount: number;
-  onCreateSession: (options?: SessionCreationOptions) => void;
-  onCreateAutomation: () => void;
-  onCreateChannel: () => void;
 }) {
   const { providers, hasModels } = useProviders();
   const isFiltering = filter.hiddenProviders.length > 0 || !filter.showExternalSessions;
@@ -125,11 +119,7 @@ export function SidebarHeader({
           </Badge>
         )}
       </div>
-      <SidebarSplitButton
-        onCreateSession={onCreateSession}
-        onCreateAutomation={onCreateAutomation}
-        onCreateChannel={onCreateChannel}
-      />
+      <SidebarSplitButton />
     </div>
   );
 }

@@ -33,6 +33,8 @@ the workspace consumes the same provider-owned catalog and configuration.
   Native SDK and protocol types stay inside their implementations.
 - `server/index.ts` registers the providers, aggregates their available catalogs,
   isolates discovery failures, and stops their shared processes on server shutdown.
+  Its `getModelChoices` composes that catalog with the normalized workspace default, optionally
+  scoped to one provider. A scoped default is null when the workspace default uses another provider.
   Model discovery shares one process-wide promise per provider until shutdown or a successful CLI
   update check; failed discovery is evicted so the next request can retry. Updates evict only that
   provider's models and broadcast `providers.changed` to refresh client catalogs and versions.
@@ -42,6 +44,9 @@ the workspace consumes the same provider-owned catalog and configuration.
   on every request. A provider that cannot discover its catalog contributes no entries and remains
   visible in Settings. Disabling removes discovery and closes its open session panes; it does not
   delete history or stop server work already running.
+- `routes/v1/models.ts` exposes `GET /api/v1/models` to external clients as
+  `{ version: 1, models, defaultModel }`. Channels reuses `getModelChoices` for member-scoped
+  choices; the HTTP entry point does not introduce another catalog or cache.
 - [`server/copilot/`](server/copilot/AGENTS.md) implements the contract through the
   GitHub Copilot SDK.
 - [`server/codex/`](server/codex/AGENTS.md) implements it through the Codex app-server.

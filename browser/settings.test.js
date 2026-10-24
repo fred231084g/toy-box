@@ -21,10 +21,10 @@ describe("browser server settings", () => {
 
   test("appends the Inbox path to the default or a nested server URL", () => {
     expect(parseServerSetting(DEFAULT_SERVER_URL).inboxEndpoint).toBe(
-      "http://localhost:3100/api/inbox",
+      "http://localhost:3100/api/v1/inbox",
     );
     expect(parseServerSetting("https://example.com/toy-box/").inboxEndpoint).toBe(
-      "https://example.com/toy-box/api/inbox",
+      "https://example.com/toy-box/api/v1/inbox",
     );
   });
 
@@ -40,7 +40,7 @@ describe("browser server settings", () => {
   test("resolves the complete endpoint from the local browser setting", async () => {
     installBrowser({ storedServerUrl: "https://example.com/toy-box/" });
 
-    await expect(getInboxEndpoint()).resolves.toBe("https://example.com/toy-box/api/inbox");
+    await expect(getInboxEndpoint()).resolves.toBe("https://example.com/toy-box/api/v1/inbox");
   });
 
   test("requests the host and stores the normalized server", async () => {
@@ -48,7 +48,7 @@ describe("browser server settings", () => {
 
     await expect(saveServerSetting("https://example.com/toy-box/")).resolves.toMatchObject({
       serverUrl: "https://example.com/toy-box",
-      inboxEndpoint: "https://example.com/toy-box/api/inbox",
+      inboxEndpoint: "https://example.com/toy-box/api/v1/inbox",
     });
     expect(calls.requested).toEqual({ origins: ["https://example.com/*"] });
     expect(calls.stored).toEqual({ serverUrl: "https://example.com/toy-box" });
@@ -71,8 +71,8 @@ describe("browser server settings", () => {
   });
 
   test("rejects endpoint URLs and non-server URL components", () => {
-    expect(() => parseServerSetting("http://localhost:3100/api/inbox/")).toThrow(
-      "without /api/inbox",
+    expect(() => parseServerSetting("http://localhost:3100/api/v1/inbox/")).toThrow(
+      "without /api/v1/inbox",
     );
     expect(() => parseServerSetting("http://user:secret@localhost:3100")).toThrow("credentials");
     expect(() => parseServerSetting("http://localhost:3100?profile=work")).toThrow("query string");

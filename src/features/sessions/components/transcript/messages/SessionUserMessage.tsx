@@ -16,6 +16,7 @@ export function SessionUserMessage({ message }: { message: UserMessageType }) {
   const isSessionLive = useWorkspaceSelector((workspace) =>
     isWorkspaceSessionLive(workspace.sessionStates[sessionId]?.status),
   );
+
   const rewindAction =
     message.timestamp && message.rewindable !== false && mode !== "passive" && !isSessionLive ? (
       <RewindControl sessionId={sessionId} timestamp={message.timestamp} />

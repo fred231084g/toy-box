@@ -2,6 +2,8 @@ import { defineTool, type ToolResult } from "@sessions/server/tools/definition";
 import { z } from "zod";
 import {
   agentHandleFromName,
+  channelAgentIdentity,
+  channelTaskElapsedMinutes,
   channelIdentitySchema,
   channelMessageContentSchema,
   channelReactionKindSchema,
@@ -16,7 +18,9 @@ import {
   updateChannelInputSchema,
   type Channel,
   type ChannelAgent,
+  type ChannelAgentIdentity,
   type ChannelArtifact,
+  type ChannelTask,
 } from "@channels/model";
 import { workspaceFileId } from "@files/model";
 import { resolveWorkspaceFile } from "@files/server/paths";
@@ -135,11 +139,15 @@ const waitForChannelAgentsTool = defineTool("wait_for_channel_agents", {
 
 const readChannelForAgentTool = defineTool("read_channel", {
   description:
-    "Reads the channel purpose, tasks, URL or screen preview, lead, current members, shared artifacts, routines, attachments, and this agent's next 100 unread messages, then advances its read position. Repeat while hasMore is true. File attachments are absolute paths. Inline uploads are attached images.",
-  parameters: z.object({}),
-  handler: async (_args, invocation) => {
+    "Reads this agent's next 100 unread messages, unfinished assigned tasks (all unfinished tasks for the lead), and working or waiting agents. Advances its read position. With no read cursor, always returns full context. Set detail:'full' for the channel purpose, directory, preview, complete tasks, roster with roles, artifacts, and routines. Repeat while hasMore is true. File attachments are absolute paths. Inline uploads are attached images.",
+  parameters: z.object({ detail: z.enum(["compact", "full"]).optional() }),
+  handler: async ({ detail }, invocation) => {
     const { readChannelForAgent } = await import("@channels/server");
-    return toChannelReadToolResult(await readChannelForAgent(invocation.sessionId));
+    const result = await readChannelForAgent(invocation.sessionId);
+    return toChannelReadToolResult(
+      result,
+      detail === "full" || result.isInitialRead ? undefined : invocation.sessionId,
+    );
   },
 });
 
@@ -203,7 +211,7 @@ const setChannelStatusTool = defineTool("set_agent_status", {
 
 const updateChannelTool = defineTool("update_channel", {
   description:
-    "Updates this channel's name, purpose, working directory, tasks, or preview. Only the lead can update it. Use an existing absolute directory, which applies to all agents at their next execution. Supply tasks only for initial planning or intentional whole-list replacement; use edit_channel_tasks for progress updates. Set preview to {kind:'url',url} or {kind:'screen',screenId} from list_screens. A screen reference opens an existing host display or window; it does not launch an app. Preserve root-relative preview URLs. Share file artifacts instead of using them as previews. Set purpose, directory, or preview to null to clear it.",
+    "Updates this channel's name, purpose, working directory, tasks, or preview. Only the lead can update it. Use an existing absolute directory, which applies to all agents at their next execution. Supply tasks only for initial planning or intentional whole-list replacement after read_channel with detail:'full'; never replace the tree from unfinishedTasks. Use edit_channel_tasks for progress updates. Set preview to {kind:'url',url} or {kind:'screen',screenId} from list_screens. A screen reference opens an existing host display or window; it does not launch an app. Preserve root-relative preview URLs. Share file artifacts instead of using them as previews. Set purpose, directory, or preview to null to clear it.",
   parameters: updateChannelInputSchema,
   handler: async (args, invocation) => {
     const { updateChannelFromLead } = await import("@channels/server");
@@ -340,17 +348,32 @@ const shareChannelArtifactFromAgentTool = defineTool("share_channel_artifact", {
 
 function toChannelReadToolResult(
   result: Awaited<ReturnType<typeof import(".").readChannelForSession>>,
+  compactForAgentId?: string,
 ) {
+  const agents = [result.lead, ...result.members];
   const images: Attachment[] = [];
   const messages = result.messages.map((message) => {
+    const sender =
+      compactForAgentId && message.sender.type === "agent"
+        ? {
+            type: "agent" as const,
+            ...agentIdentityForTool(channelAgentIdentity(agents, message.sender.agentId)),
+          }
+        : message.sender;
     if (isChannelSystemMessage(message)) {
       const content = message.content;
       const { id: _id, ...rest } = message;
       return {
         ...rest,
+        sender,
         content:
           content.type === "member_joined" || content.type === "member_left"
-            ? { type: content.type, agentId: content.member.id }
+            ? {
+                type: content.type,
+                ...(compactForAgentId
+                  ? agentIdentityForTool(content.member)
+                  : { agentId: content.member.id }),
+              }
             : content.type === "artifact_shared"
               ? {
                   ...content,
@@ -362,6 +385,7 @@ function toChannelReadToolResult(
     const { id: _id, attachments, ...rest } = message;
     return {
       ...rest,
+      sender,
       ...(attachments?.length
         ? {
             attachments: attachments.map((attachment) => {
@@ -380,11 +404,28 @@ function toChannelReadToolResult(
       {
         type: "text",
         text: JSON.stringify({
-          channel: channelContextForTool(result.channel),
-          lead: agentForTool(result.lead),
-          members: result.members.map(agentForTool),
-          artifacts: result.artifacts.map(artifactForTool),
-          routines: result.routines.map(({ id, ...routine }) => ({ routineId: id, ...routine })),
+          ...(compactForAgentId
+            ? {
+                unfinishedTasks: unfinishedTasksForTool(
+                  result.channel.tasks,
+                  compactForAgentId === result.lead.id ? undefined : compactForAgentId,
+                  Date.now(),
+                ),
+                agents: agents
+                  .map(agentForTool)
+                  .filter((agent) => agent.status)
+                  .map(({ role: _role, ...agent }) => agent),
+              }
+            : {
+                channel: channelContextForTool(result.channel),
+                lead: agentForTool(result.lead),
+                members: result.members.map(agentForTool),
+                artifacts: result.artifacts.map(artifactForTool),
+                routines: result.routines.map(({ id, ...routine }) => ({
+                  routineId: id,
+                  ...routine,
+                })),
+              }),
           messages,
           hasMore: result.hasMore,
         }),
@@ -402,12 +443,46 @@ function channelContextForTool({ name, purpose, directory, tasks, preview }: Cha
   return { name, purpose, directory, tasks, preview };
 }
 
-function agentForTool(agent: ChannelAgent) {
-  const presence = channelAgentPresence(agent, getSessionState(agent.id)?.status === "running");
+type UnfinishedTask = Omit<ChannelTask, "children" | "startedAt"> & {
+  elapsedMinutes?: number;
+  children?: UnfinishedTask[];
+};
+
+function unfinishedTasksForTool(
+  tasks: readonly ChannelTask[],
+  ownerId: string | undefined,
+  now: number,
+): UnfinishedTask[] {
+  return tasks.flatMap(({ children, startedAt, ...task }) => {
+    const unfinishedChildren = unfinishedTasksForTool(children ?? [], ownerId, now);
+    if (
+      !unfinishedChildren.length &&
+      (task.status === "done" || (ownerId !== undefined && task.ownerId !== ownerId))
+    ) {
+      return [];
+    }
+    return [
+      {
+        ...task,
+        elapsedMinutes: channelTaskElapsedMinutes({ startedAt }, now),
+        ...(unfinishedChildren.length ? { children: unfinishedChildren } : {}),
+      },
+    ];
+  });
+}
+
+function agentIdentityForTool(agent: ChannelAgentIdentity) {
   return {
     agentId: agent.id,
     name: agent.name,
-    mention: `@${agentHandleFromName(agent.name)}`,
+    ...(!agent.deleted ? { mention: `@${agentHandleFromName(agent.name)}` } : {}),
+  };
+}
+
+function agentForTool(agent: ChannelAgent) {
+  const presence = channelAgentPresence(agent, getSessionState(agent.id)?.status === "running");
+  return {
+    ...agentIdentityForTool(agent),
     role: agent.role,
     ...(presence.state !== "idle"
       ? { status: { ...(agent.status?.state === presence.state ? agent.status : {}), ...presence } }

@@ -1,5 +1,9 @@
 import type { Session } from "@sessions/model";
-import type { ModelInfo, ProviderCatalog } from "@providers/model";
+import {
+  normalizeModelConfiguration,
+  type ModelInfo,
+  type ProviderCatalog,
+} from "@providers/model";
 import { getSettings } from "@workspace/server/state/settings";
 import { broadcast } from "@workspace/server/events";
 import { sharedMap } from "@/shared/server/processState";
@@ -26,6 +30,16 @@ export function getSessionProvider(id: string): SessionProvider {
 export async function getProviderCatalog(): Promise<ProviderCatalog> {
   const providers = providerInfo();
   return { providers, models: await collectAvailable(readModels, providers) };
+}
+
+export async function getModelChoices(provider?: string) {
+  const [{ models }, { defaultModel }] = await Promise.all([getProviderCatalog(), getSettings()]);
+  const workspaceDefault =
+    models.length > 0 ? normalizeModelConfiguration(models, defaultModel) : null;
+  return {
+    models: provider ? models.filter((model) => model.provider === provider) : models,
+    defaultModel: !provider || workspaceDefault?.provider === provider ? workspaceDefault : null,
+  };
 }
 
 export async function listModels(): Promise<ModelInfo[]> {

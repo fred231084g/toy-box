@@ -34,8 +34,14 @@ import type { SessionSystemMessage } from "@sessions/model";
 import { getStateDatabase } from "@/server/database";
 import { broadcast } from "@workspace/server/events";
 import { deleteSavedDraft } from "@workspace/server/state/drafts";
+import { readSession } from "@sessions/server/state/sessions";
 import { deleteWorker, spawnWorker } from "@workers/server";
-import { ChannelDatabase, type StoredChannelMessage, type ChannelChange } from "./database";
+import {
+  ChannelDatabase,
+  ChannelInputError,
+  type StoredChannelMessage,
+  type ChannelChange,
+} from "./database";
 import { resolveMessageResources, resolveEventResources } from "./resources";
 import { publishChannelEvent, releaseChannelEvents } from "./events";
 
@@ -94,6 +100,14 @@ export async function updateChannelMember(
 ): Promise<ChannelMember> {
   const database = new ChannelDatabase(await getStateDatabase());
   const { agentId, ...update } = input;
+  if (update.model) {
+    const provider = (await readSession(agentId))?.provider?.id;
+    if (provider && update.model.provider !== provider) {
+      throw new ChannelInputError(
+        "A member's provider cannot change without losing its session history.",
+      );
+    }
+  }
   const change = await database.updateMember(agentId, update);
   publishChannelChange(change);
   return change.member;
@@ -180,6 +194,20 @@ export async function removeChannelMember(agentId: string): Promise<void> {
   await deleteWorker(agentId, "channel");
 }
 
+/** The intrinsic lead is never a member. */
+export async function isChannelMember(channelId: string, agentId: string): Promise<boolean> {
+  const member = await new ChannelDatabase(await getStateDatabase()).getMember(agentId);
+  return member?.channelId === channelId;
+}
+
+/** A started member's session fixes its provider; before that, its configured model suggests one. */
+export async function getChannelMemberProvider(channelId: string, agentId: string) {
+  const member = await new ChannelDatabase(await getStateDatabase()).getMember(agentId);
+  if (member?.channelId !== channelId) return undefined;
+  const session = (await readSession(agentId))?.provider?.id ?? null;
+  return session ?? member.model?.provider ?? null;
+}
+
 export async function markChannelRead(
   channelId: string,
   sequence: number,
@@ -253,7 +281,7 @@ export async function readChannelForAgent(sessionId: string) {
     readThrough < channel.latestSequence,
   );
   await database.markAgentSeen(agent.id, readThrough);
-  return result;
+  return { ...result, isInitialRead: agent.seenThrough === 0 };
 }
 
 async function readChannel(
@@ -374,19 +402,25 @@ export async function deleteChannelRoutine(channelId: string, routineId: string)
   return true;
 }
 
-/** Privately wake each lead whose follow-up or routine is due. Claims commit before delivery. */
+/** Privately wake agents for due follow-ups, routines, and task check-ins. Claims commit before delivery. */
 export async function wakeDueChannelAgents(now = new Date()): Promise<void> {
   try {
     const database = await getStateDatabase({ createIfMissing: false });
     if (!database) return;
-    const { followUps, routines } = await new ChannelDatabase(database).claimDueWakes(now);
-    for (const { change } of followUps) publishChannelChange(change);
+    const { followUps, routines, checkIns, taskChanges } = await new ChannelDatabase(
+      database,
+    ).claimDueWakes(now);
+    for (const change of [...followUps.map(({ change }) => change), ...taskChanges])
+      publishChannelChange(change);
     await Promise.all([
       ...followUps.map(({ agentId, waitingFor }) =>
-        wakeLead(agentId, { type: "channel_follow_up", waitingFor }),
+        wakeDueAgent(agentId, { type: "channel_follow_up", waitingFor }),
       ),
       ...routines.map(({ channelId, title, prompt }) =>
-        wakeLead(channelId, { type: "channel_routine", title, prompt }),
+        wakeDueAgent(channelId, { type: "channel_routine", title, prompt }),
+      ),
+      ...checkIns.map(({ agentId, ...task }) =>
+        wakeDueAgent(agentId, { type: "channel_task_check_in", ...task }),
       ),
     ]);
   } catch (error) {
@@ -407,9 +441,9 @@ export async function runChannelRoutine(channelId: string, routineId: string): P
   return true;
 }
 
-function wakeLead(leadId: string, systemMessage: SessionSystemMessage): Promise<void> {
-  return wakeChannelAgent(leadId, systemMessage).catch((error) => {
-    console.error(`Failed to wake Channel lead ${leadId}:`, error);
+function wakeDueAgent(agentId: string, systemMessage: SessionSystemMessage): Promise<void> {
+  return wakeChannelAgent(agentId, systemMessage).catch((error) => {
+    console.error(`Failed to wake Channel agent ${agentId}:`, error);
   });
 }
 

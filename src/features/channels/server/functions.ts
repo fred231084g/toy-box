@@ -1,5 +1,4 @@
 import { createServerFn } from "@tanstack/react-start";
-import { zodValidator } from "@tanstack/zod-adapter";
 import type { Channel, ChannelList, ChannelMessage } from "@channels/model";
 import {
   channelIdentitySchema,
@@ -18,47 +17,47 @@ export const listChannels = createServerFn({ method: "GET" }).handler((): Promis
 );
 
 export const createChannel = createServerFn({ method: "POST" })
-  .validator(zodValidator(createChannelInputSchema))
+  .validator(createChannelInputSchema)
   .handler(({ data }): Promise<Channel> => channels.createChannel(data));
 
 export const createChannelMember = createServerFn({ method: "POST" })
-  .validator(zodValidator(createChannelMemberInputSchema))
+  .validator(createChannelMemberInputSchema)
   .handler(({ data }) => channels.createChannelMember(data));
 
 export const updateChannelMember = createServerFn({ method: "POST" })
-  .validator(zodValidator(updateChannelMemberInputSchema))
+  .validator(updateChannelMemberInputSchema)
   .handler(({ data }) => channels.updateChannelMember(data));
 
 export const editChannel = createServerFn({ method: "POST" })
-  .validator(zodValidator(editChannelInputSchema))
+  .validator(editChannelInputSchema)
   .handler(({ data }): Promise<Channel> => channels.editChannel(data));
 
 export const deleteChannel = createServerFn({ method: "POST" })
-  .validator(zodValidator(channelIdentitySchema))
+  .validator(channelIdentitySchema)
   .handler(({ data }): Promise<boolean> => channels.deleteChannel(data.channelId));
 
 export const removeChannelMember = createServerFn({ method: "POST" })
-  .validator(zodValidator(removeChannelMemberInputSchema))
+  .validator(removeChannelMemberInputSchema)
   .handler(({ data }): Promise<void> => channels.removeChannelMember(data.agentId));
 
 export const deleteChannelRoutine = createServerFn({ method: "POST" })
-  .validator(zodValidator(channelRoutineIdentitySchema))
+  .validator(channelRoutineIdentitySchema)
   .handler(({ data }): Promise<boolean> =>
     channels.deleteChannelRoutine(data.channelId, data.routineId),
   );
 
 export const runChannelRoutine = createServerFn({ method: "POST" })
-  .validator(zodValidator(channelRoutineIdentitySchema))
+  .validator(channelRoutineIdentitySchema)
   .handler(({ data }): Promise<boolean> =>
     channels.runChannelRoutine(data.channelId, data.routineId),
   );
 
 export const markChannelRead = createServerFn({ method: "POST" })
-  .validator(zodValidator(markChannelReadInputSchema))
+  .validator(markChannelReadInputSchema)
   .handler(async ({ data }): Promise<void> => {
     await channels.markChannelRead(data.channelId, data.sequence);
   });
 
 export const postChannelMessage = createServerFn({ method: "POST" })
-  .validator(zodValidator(postChannelMessageInputSchema))
+  .validator(postChannelMessageInputSchema)
   .handler(({ data }): Promise<ChannelMessage> => channels.postChannelMessage(data));

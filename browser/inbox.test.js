@@ -31,7 +31,7 @@ describe("browser Inbox dispatch", () => {
     });
 
     const body = JSON.parse(request.options.body);
-    expect(request.url).toBe("https://example.com/toy-box/api/inbox");
+    expect(request.url).toBe("https://example.com/toy-box/api/v1/inbox");
     expect(request.options).toMatchObject({
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -64,7 +64,7 @@ describe("browser Inbox dispatch", () => {
       page: { url: "https://example.org/article" },
     });
 
-    expect(endpoint).toBe("http://localhost:3100/api/inbox");
+    expect(endpoint).toBe("http://localhost:3100/api/v1/inbox");
   });
 
   test("identifies the configured server when a network request fails", async () => {
@@ -78,7 +78,7 @@ describe("browser Inbox dispatch", () => {
         task: "Summarize the article.",
         page: { url: "https://example.org/article" },
       }),
-    ).rejects.toThrow("Couldn’t reach Toy Box at http://toy-box.local:4100/api/inbox.");
+    ).rejects.toThrow("Couldn’t reach Toy Box at http://toy-box.local:4100/api/v1/inbox.");
   });
 
   test("reports an Inbox response error", async () => {

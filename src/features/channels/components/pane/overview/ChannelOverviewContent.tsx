@@ -37,7 +37,7 @@ import { ShowMore, useShowMore } from "@/shared/ui/show-more";
 import { nextCronOccurrence } from "@/shared/cron";
 import { cn } from "@/shared/utils";
 import { useChannelPane } from "../ChannelPaneContext";
-import { channelTaskItems, TaskDiff } from "../channelTaskItems";
+import { useChannelTaskItems, TaskDiff } from "../channelTaskItems";
 import { WorkspacePreview } from "@workspace/components/outputs/WorkspacePreview";
 
 /** What the overview shows: the Channel's context, team members, tasks, artifacts, and routines. */
@@ -66,6 +66,12 @@ export function ChannelOverviewContent({
   const sortedMembers = [...members].sort((left, right) => left.name.localeCompare(right.name));
   const completedCount = channel.tasks.filter(({ status }) => status === "done").length;
   const diff = channelTasksDiff(channel.tasks);
+  const taskItems = useChannelTaskItems({
+    tasks: channel.tasks,
+    owners: agents,
+    artifacts,
+    onArtifactOpen,
+  });
 
   return (
     <div className="min-h-0 flex-1 space-y-6 overflow-y-auto bg-panel p-4">
@@ -133,15 +139,7 @@ export function ChannelOverviewContent({
         detail={diff && <TaskDiff diff={diff} />}
       >
         {channel.tasks.length > 0 ? (
-          <Checklist
-            items={channelTaskItems({
-              tasks: channel.tasks,
-              owners: agents,
-              artifacts,
-              onArtifactOpen,
-            })}
-            className="text-sm"
-          />
+          <Checklist items={taskItems} className="text-sm" />
         ) : (
           <p className="text-sm text-muted-foreground italic">No tasks yet.</p>
         )}

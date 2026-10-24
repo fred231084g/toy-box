@@ -26,8 +26,8 @@ no table or SQL. `server/dispatcher.ts` calls `spawnWorker` with the complete la
 Inbox ownership, and a retention callback.
 Result writes acknowledge persistence without rebuilding an entry; reads own the Inbox projection.
 `server/functions.ts` is the validated RPC ingress used by Query mutations and matching server
-callers; `server/tools.ts` validates and handles the agent-only result operation. `routes/inbox.ts`
-owns the external JSON and multipart HTTP ingress used by the browser extension.
+callers; `server/tools.ts` validates and handles the agent-only result operation. `routes/v1/inbox.ts`
+owns `POST /api/v1/inbox`, the external JSON and multipart HTTP ingress used by the browser extension.
 
 ## Managed-session lifecycle
 

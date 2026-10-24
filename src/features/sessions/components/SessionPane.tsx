@@ -1,5 +1,6 @@
 import { normalizeModelConfiguration, type ModelConfiguration } from "@providers/model";
 import { useEffect, useRef, useState } from "react";
+import { MessagesSquare, MessageSquareText } from "lucide-react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useWorkspaceSelector } from "@workspace/hooks/state";
 import type { UserMessage } from "../model";
@@ -19,11 +20,18 @@ import { SessionComposer } from "./composer/SessionComposer";
 import { CurrentSessionProvider, type SessionPaneMode } from "./CurrentSessionContext";
 import type { PaneVariant } from "@workspace/components/panes/shell/WorkspacePaneView";
 import { PaneActions } from "@workspace/components/panes/shell/PaneSlots";
+import { PaneViewMenu } from "@workspace/components/panes/shell/PaneViewMenu";
 import { SessionMessageList } from "./transcript/MessageList";
+import type { TranscriptView } from "./transcript/transcriptView";
 import { TranscriptSkeleton } from "@/shared/messages/TranscriptSkeleton";
 
 // Cap the transcript text handed to a voice call so context stays cheap to send.
 const VOICE_CONTEXT_MAX_CHARS = 1000;
+
+const TRANSCRIPT_VIEWS = [
+  { value: "all", label: "All messages", Icon: MessagesSquare },
+  { value: "responses", label: "Responses", Icon: MessageSquareText },
+] as const;
 
 type SessionPaneProps = {
   sessionId: string;
@@ -51,6 +59,8 @@ export function SessionPane({
   // + message badges in the host's title bar and hides them from the composer; in
   // "normal" (the grid) it keeps them inline. See WorkspacePaneView.
   const isCompact = variant === "compact" || (variant === undefined && mode !== "active");
+  const defaultView = useWorkspaceSelector((workspace) => workspace.settings.defaultSessionView);
+  const [view, setView] = useState<TranscriptView>(mode === "active" ? defaultView : "all");
 
   // ---------------------------------------------------------------------------
   // Session location
@@ -240,16 +250,18 @@ export function SessionPane({
 
   return (
     <div className="flex flex-col h-full">
-      {/* Compact panes declare location and message count into the host title bar. */}
-      {isCompact && mode === "active" && (
+      {mode === "active" && (
         <PaneActions>
-          <div className="flex min-w-0 items-center gap-1.5">
-            {locationPickerProps && (
-              // Logical padding overrides the picker's padding-inline in the desktop deck.
-              <SessionLocationPicker {...locationPickerProps} className="md:pe-0" />
-            )}
-            <SessionMetadataBadges messageCount={messages.length} />
-          </div>
+          {isCompact && (
+            <div className="flex min-w-0 items-center gap-1.5">
+              {locationPickerProps && (
+                // Logical padding overrides the picker's padding-inline in the desktop deck.
+                <SessionLocationPicker {...locationPickerProps} className="md:pe-0" />
+              )}
+              <SessionMetadataBadges messageCount={messages.length} />
+            </div>
+          )}
+          <PaneViewMenu view={view} views={TRANSCRIPT_VIEWS} onViewChange={setView} />
         </PaneActions>
       )}
 
@@ -268,6 +280,7 @@ export function SessionPane({
             <EditDiffsProvider value={editDiffs.byToolCallId}>
               <SessionMessageList
                 messages={messages}
+                view={view}
                 isStreaming={isStreaming}
                 isWaiting={workspaceSessionStatus === "waiting"}
                 status={status}

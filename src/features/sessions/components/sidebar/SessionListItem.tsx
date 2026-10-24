@@ -1,25 +1,23 @@
-import { useEffect, useId, useState, type ReactNode } from "react";
-import { ChevronRight, FolderOpen, Pencil, Pin, PinOff, Trash2 } from "lucide-react";
+import { Fragment, useEffect, useId, useState, type ReactNode } from "react";
+import { ChevronRight, Pin } from "lucide-react";
 import { useReducedMotionConfig } from "motion/react";
 import { Typewriter } from "motion-plus/react";
-import { DropdownMenuItem, DropdownMenuSeparator } from "@/shared/ui/dropdown-menu";
+import { DropdownMenuSeparator } from "@/shared/ui/dropdown-menu";
 import { Badge } from "@/shared/ui/badge";
 import { cn } from "@/shared/utils";
 import { RelativeTime } from "@/shared/ui/relative-time";
-import { DestructiveConfirmationDialog } from "@/shared/sidebar/DestructiveConfirmationDialog";
+import { CommandMenuItem } from "@/shared/commands/CommandMenuItem";
 import { useWorkspaceSessionActivity } from "@workspace/hooks/state";
 import { SidebarSessionItem } from "./SidebarSessionItem";
 import type { Session } from "../../model";
-import { sessionMutations } from "../../mutations";
+import { getSessionLabel } from "../../model/label";
+import { createSessionActions } from "../../commands";
 import { SessionMetadataBadges } from "../location/SessionMetadataBadges";
 
 type SessionListItemProps = {
   session: Session;
   onSelect: (sessionId: string, toggleInWorkspace: boolean) => void;
   onPinToggle?: (sessionId: string) => void;
-  onRename: (sessionId: string) => void;
-  onBrowseDirectory: (directory: string) => void;
-  onDelete: (sessionId: string) => void;
   isActive?: boolean;
   isPinned?: boolean;
   isWorktree?: boolean;
@@ -31,29 +29,17 @@ export function SessionListItem({
   session,
   onSelect,
   onPinToggle,
-  onRename,
-  onBrowseDirectory,
-  onDelete,
   isActive = false,
   isPinned = false,
   isWorktree = false,
   childCount,
   renderChildren,
 }: SessionListItemProps) {
-  const [deleteOpen, setDeleteOpen] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
   const childListId = useId();
   const isDraft = !session.provider;
   const activity = useWorkspaceSessionActivity(session.id);
-  const sessionLabel =
-    session.title ||
-    (isDraft && session.artifactPath
-      ? session.artifactPath.toLowerCase().endsWith(".md")
-        ? "New document"
-        : "New whiteboard"
-      : isDraft
-        ? "Draft session"
-        : "New session");
+  const sessionLabel = getSessionLabel(session);
   const isTitleLoading = !isDraft && !session.title && activity.running;
 
   const handleClick = (event: React.MouseEvent) => {
@@ -114,31 +100,15 @@ export function SessionListItem({
             />
           )
         }
-        menuItems={
-          <>
-            {onPinToggle && (
-              <DropdownMenuItem disabled={isDraft} onClick={() => onPinToggle(session.id)}>
-                {isPinned ? <PinOff className="h-3.5 w-3.5" /> : <Pin className="h-3.5 w-3.5" />}
-                {isPinned ? "Unpin session" : "Pin session"}
-              </DropdownMenuItem>
-            )}
-            <DropdownMenuItem disabled={isDraft} onClick={() => onRename(session.id)}>
-              <Pencil className="h-3.5 w-3.5" />
-              Rename session
-            </DropdownMenuItem>
-            {directory && (
-              <DropdownMenuItem onClick={() => onBrowseDirectory(directory)}>
-                <FolderOpen className="h-3.5 w-3.5" />
-                Browse files
-              </DropdownMenuItem>
-            )}
-            <DropdownMenuSeparator />
-            <DropdownMenuItem variant="destructive" onClick={() => setDeleteOpen(true)}>
-              <Trash2 className="h-3.5 w-3.5" />
-              Delete session
-            </DropdownMenuItem>
-          </>
-        }
+        menuItems={createSessionActions(
+          session,
+          onPinToggle && { isPinned, toggle: () => onPinToggle(session.id) },
+        ).map((action) => (
+          <Fragment key={action.id}>
+            {action.destructive && <DropdownMenuSeparator />}
+            <CommandMenuItem command={action} />
+          </Fragment>
+        ))}
         isActive={isActive}
         previewDisabled={isDraft}
         onClick={handleClick}
@@ -157,15 +127,6 @@ export function SessionListItem({
           {isExpanded && renderChildren()}
         </ul>
       )}
-      {deleteOpen && (
-        <DestructiveConfirmationDialog
-          title="Delete session?"
-          description="This will permanently delete this session, its child sessions, and all their messages. This action cannot be undone."
-          mutation={sessionMutations.deleteSession(session.id)}
-          onSubmit={() => onDelete(session.id)}
-          onOpenChange={setDeleteOpen}
-        />
-      )}
     </>
   );
 }
@@ -182,7 +143,7 @@ export function formatRunningTime(elapsedMs: number): string {
 }
 
 /** Re-renders on each boundary of the unit it displays: seconds for the first minute, then minutes. */
-function RunningTime({ since }: { since: number }) {
+export function RunningTime({ since }: { since: number }) {
   const [now, setNow] = useState(Date.now);
   useEffect(() => {
     const elapsed = Math.max(0, Date.now() - since);

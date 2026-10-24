@@ -36,6 +36,13 @@ export const sessionMutations = {
   startSession: () =>
     mutationOptions({
       mutationFn: (launch: SessionLaunch) => startSession({ data: launch }),
+      // The server mints the ID, so the catalog admits it on success rather than
+      // optimistically. Native discovery can lag a new session, so a refetch here
+      // could drop it; omitting timestamps keeps this idempotent with the broadcast.
+      onSuccess: ({ sessionId }, _launch, _context, { client }) => {
+        void cancelSessionsStateQuery(client);
+        upsertSessionInState(client, { id: sessionId, sessionType: "standard" });
+      },
     }),
 
   createSession: () =>

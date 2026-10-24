@@ -6,6 +6,7 @@ import type { ModelInfo } from "../model";
 import * as workspaceSettings from "@workspace/server/state/settings";
 import { DEFAULT_SETTINGS } from "@workspace/model/config/settings";
 import { subscribeWorkspaceEvents } from "@workspace/server/events";
+import { Route as ModelsRoute } from "../routes/v1/models";
 import {
   getProviderCatalog,
   listModels,
@@ -41,6 +42,31 @@ test("no installed providers returns empty catalogs without starting a provider"
     sessionProviders.map(({ id, name }) => ({ id, name, installed: false })),
   );
   for (const reader of readers) expect(reader).not.toHaveBeenCalled();
+});
+
+test("the public models route returns versioned choices without caching", async () => {
+  spyOn(cli, "isInstalled").mockImplementation((id) => id === "codex");
+  spyOn(codexProvider, "listModels").mockResolvedValue([MODEL]);
+  const handlers = ModelsRoute.options.server!.handlers!;
+  if (typeof handlers === "function" || !handlers.GET)
+    throw new Error("Models route must handle GET requests.");
+  const response = await handlers.GET({
+    request: new Request("http://toy-box.test/api/v1/models"),
+    context: undefined,
+    params: {},
+    pathname: "/api/v1/models",
+    next: () => {
+      throw new Error("Models requests must be handled by the Models route.");
+    },
+  });
+  if (!(response instanceof Response)) throw new Error("Models route must return a response.");
+  expect(response.status).toBe(200);
+  expect(response.headers.get("Cache-Control")).toBe("no-store");
+  expect(await response.json()).toEqual({
+    version: 1,
+    models: [{ ...MODEL, providerName: codexProvider.name }],
+    defaultModel: { provider: MODEL.provider, name: MODEL.id },
+  });
 });
 
 test("failed discovery leaves provider settings reachable and the next request can retry", async () => {

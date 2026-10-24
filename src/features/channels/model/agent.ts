@@ -21,7 +21,7 @@ const agentAvatarMarkSchema = z
   .max(2_000)
   .regex(/^[MmZzLlHhVvCcSsQqTtAaEe0-9.,+\-\s]+$/, "Use SVG path data only.")
   .describe(
-    "SVG path data for a distinctive outline mark in a 24 by 24 viewBox. Multiple subpaths are allowed. Keep the mark recognizable at 20 pixels.",
+    "SVG path data for a distinctive outline mark in a 24 by 24 viewBox, drawn with a 2.25-unit round stroke. Express one idea in two to four strokes. Keep parallel strokes at least 3 units apart, and avoid text lines, dots and tiny details. The mark must stay recognizable at 16 pixels.",
   );
 
 export const agentAvatarSchema = z
@@ -34,16 +34,21 @@ export const agentAvatarSchema = z
   })
   .strict();
 
-export type AgentAvatar = z.output<typeof agentAvatarSchema>;
+/**
+ * An agent's rendered avatar. Agents author only the mark and background, so their ink contrasts
+ * automatically. Toy Box's own profiles may also fix the ink, which clients use for the mark.
+ */
+export type AgentAvatar = z.output<typeof agentAvatarSchema> & { ink?: string };
 
 export const CHANNEL_LEAD_PROFILE = {
   name: "Lead",
   role: "Own the channel purpose and coordinate the work.",
   avatar: {
     mark: "M12 3l2.7 5.5 6.1.9-4.4 4.3 1 6.1-5.4-2.9-5.4 2.9 1-6.1-4.4-4.3 6.1-.9L12 3z",
-    color: "#0891b2",
+    color: "#1e3a8a",
+    ink: "#facc15",
   },
-} as const;
+} as const satisfies { name: string; role: string; avatar: AgentAvatar };
 
 /** The name shown for an agent that has since been removed from its Channel. */
 export const DELETED_AGENT_NAME = "Deleted agent";

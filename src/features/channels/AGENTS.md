@@ -53,6 +53,16 @@ Channel        name, purpose, directory, lead model, tasks, preview, user read p
   diffs, and measures directly attributed work. `channelTasksDiff` derives totals from direct
   and descendant diffs, never storing aggregates. Unreported work differs from a measured zero;
   totals summarize reported work, not necessarily the net repository diff.
+- Task timing belongs to the committed tree: server-owned `startedAt` begins on entry to
+  `in_progress`, survives edits, moves, replacements by ID, and blocking, and clears on done or
+  reset to pending. Clients derive age from this
+  timestamp; compact agent reads expose derived `elapsedMinutes` instead of the timestamp.
+  The lead may independently set an optional UTC `checkInAt`. The existing minute wake check
+  atomically clears due check-ins on assigned, in-progress tasks, then privately asks each owner
+  for progress. Pending and blocked tasks do not dispatch check-ins. Task age continues; another
+  check-in requires another timestamp. Completion clears it; null cancels it. Checklists retain
+  `X / Y`: elapsed minutes / minutes until check-in, then elapsed only once consumed.
+  Wakes use the existing best-effort delivery guarantee, not a durable notification outbox.
 - `ChannelAgent` is the shared public identity of anyone on the team, the lead or a member: ID,
   name, role, avatar, and status. A Channel's agents, lead first, form its team, which the overview
   presents as Team members.
@@ -169,7 +179,14 @@ needs one and none was provided, the lead can create and assign it through `upda
 
 The collaboration protocol asks an agent to read current context at turn start, use the smallest
 useful public action, set status only for substantive work, reread before a result or handoff, mention
-members whose wait it fulfills, and finish every turn explicitly. Public messages, reactions,
+members whose wait it fulfills, and finish every turn explicitly. Agent `read_channel` defaults to
+unread messages, `unfinishedTasks` assigned to the caller (all unfinished tasks for the lead), and
+working or waiting agents. Task ancestors retain assignment context; idle message authors remain
+identified by name and mention. With a zero read cursor it always returns full context, even when
+compact is requested. `detail: "full"` also includes Channel metadata, the complete task tree,
+roster roles, artifacts, and routines for reorientation, planning, and final review. Never replace
+the task tree from `unfinishedTasks`. Both views use the same forward read cursor and attachments;
+passive Session reads retain their full context and backward paging. Public messages, reactions,
 statuses, artifacts, and attachments are the only peer communication contract. Private transcripts
 and tool logs never enter the Channel. Model-facing message tools cap posts at 3,000 characters so
 durable long-form work stays in canonical shared artifacts; browser messages retain the Channel
@@ -219,9 +236,10 @@ have their own revisioned events without a transcript entry. Human read-position
 have a revisioned event carrying only the committed cursor.
 Private Agent read-position changes update only Worker metadata. Message, reaction, and artifact tables continue
 to reference the stable Agent ID without a foreign key so authored history survives member removal.
-Routines keep a server-private `next_at`. A 30-second interval from `server/startup.ts` claims due
-follow-ups and routines in one transaction before delivery: a follow-up clears its waiting status,
-and a routine moves past now, so runs missed while stopped collapse into one.
+Routines keep a server-private `next_at`. A 60-second interval from `server/startup.ts` claims due
+follow-ups, routines, and task check-ins in one transaction before delivery: a follow-up clears its
+waiting status, a routine moves past now, and a task check-in clears its timestamp. Routine runs
+missed while stopped collapse into one.
 
 The database is authoritative. Lead metadata updates and attention operations authorize against the
 Channel's intrinsic lead ID within their transaction. Task edits and replacements also validate
@@ -266,8 +284,17 @@ and message targets only while its state matches that presence.
 
 ### Shared client protocol
 
-`GET /api/v1/channels` exposes the existing catalog as `{ version: 1, channels, members }` for
-client channel selection, using the same list operation as browser RPC.
+`GET /api/v1/channels` exposes the existing catalog as
+`{ version: 1, channels, members, lead, working }` for client channel selection, using the same
+list operation as browser RPC. `lead` is the profile every Channel's lead shares, with the
+Channel's ID as its own, so clients draw leads of Channels they haven't opened without keeping a
+copy. It never appears in `members`. `working` names the
+leads and members whose sessions are running, the same fact presence uses, because native clients
+cannot read the workspace session state the browser's sidebar uses for closed Channels.
+
+An avatar is `{ mark, color }`, where agents author both and clients stroke the mark in whichever
+of black or white contrasts more with `color`. Toy Box's own profiles may add `ink`, a fixed mark
+color the lead uses for its gold star. Agent-authored avatars never carry it.
 
 `GET /api/v1/channels/:channelId` streams SSE for browser and native clients through `streamChannel`.
 Its snapshot event carries a `ChannelState`; snapshots are part of the stream protocol.
@@ -327,6 +354,35 @@ Duplicate IDs return 409 without repeating delivery. `POST …/read` accepts `{ 
 the same monotonic read operation as the browser, and returns `{ version: 1, seenThrough }`.
 Reading acknowledges completion but never answers a request. HTTP and RPC are thin entry points
 to these capabilities under Toy Box's existing trusted-owner server assumption.
+
+Native clients manage Channels through the same operations as the browser's channel menu, member
+editor, mention completion, and routine actions:
+
+- `POST /api/v1/channels` creates a Channel from `{ name, purpose?, directory?, model }` and starts
+  its lead (201 `{ version: 1, channel }`). `PATCH /api/v1/channels/:channelId` edits its name,
+  purpose, or lead model (`{ version: 1, channel }`), and `DELETE` removes it (204).
+- `POST …/members` creates a member from `{ name, role?, model? }` and starts its onboarding (201
+  `{ version: 1, member }`). `PATCH …/members/:agentId` changes its name, role, or model (null
+  inherits the workspace default), and `DELETE` removes it (204). Both reach only members of the
+  routed Channel; the intrinsic lead is never one. Once a member's session exists, its provider is
+  fixed: an explicit model from another provider returns 422. Clearing the override with
+  `model: null` remains allowed: Sessions follows a compatible workspace default or retains the
+  existing provider's model and history when that default belongs to another provider.
+- `GET …/members/:agentId/models` returns `{ version: 1, provider, models, defaultModel }` scoped
+  like the browser's member editor: `provider` is the session's provider, else the configured
+  model's, else null for no restriction. `defaultModel` is null when no compatible workspace
+  default is available; it describes a model choice, not permission to clear an override.
+- `POST …/routines/:routineId/run` wakes the lead with that routine now, and `DELETE
+  …/routines/:routineId` removes it (204, or 404 when it is already gone).
+- `GET /api/v1/models` returns `{ version: 1, models, defaultModel }`, the provider catalog and
+  normalized workspace default that the browser's model pickers offer. Providers owns this route,
+  its response, and the projection reused by the member-scoped endpoint.
+
+Bodies cannot name the identities in their route. Malformed bodies return 400, missing Channels,
+members, and routines return 404, and domain rejections such as a taken mention return 422 with
+the same message the browser shows. Unexpected management failures are logged server-side and
+return 500 with a generic `{ error }`, never an internal exception message. A failure can follow
+a committed change, so clients refresh authoritative state rather than automatically retrying writes.
 
 ## Presentation
 

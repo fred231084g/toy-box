@@ -28,6 +28,14 @@ export const sessionSystemMessageSchema = z.discriminatedUnion("type", [
       waitingFor: z.string().min(1),
     })
     .strict(),
+  z
+    .object({
+      type: z.literal("channel_task_check_in"),
+      taskId: z.string().min(1),
+      title: z.string().min(1),
+      checkInAt: z.iso.datetime(),
+    })
+    .strict(),
 ]);
 
 export type SessionSystemMessage = z.infer<typeof sessionSystemMessageSchema>;
@@ -61,6 +69,8 @@ export function systemMessagePrompt(message: SessionSystemMessage): string {
       return `Your routine ${JSON.stringify(message.title)} is due: ${JSON.stringify(message.prompt)}. Call \`read_channel\`, then do it. If nothing needs the channel's attention, finish quietly.`;
     case "channel_follow_up":
       return `Your follow-up is due. You were waiting for ${message.waitingFor}. Call \`read_channel\` and check whether you can continue.`;
+    case "channel_task_check_in":
+      return `The check-in scheduled for ${message.checkInAt} on task ${JSON.stringify(message.taskId)} (${JSON.stringify(message.title)}) is due and has been cleared. Call \`read_channel\`. If the task is still assigned to you and in progress, post a concise progress update with blockers and the next step for the lead. This is a checkpoint, not a cancellation or instruction to stop work.`;
   }
 }
 
@@ -74,6 +84,8 @@ export function systemMessageLabel(message: SessionSystemMessage): string {
       return `Routine: ${message.title}`;
     case "channel_follow_up":
       return `Follow-up: ${message.waitingFor}`;
+    case "channel_task_check_in":
+      return `Task check-in: ${message.title}`;
   }
 }
 
@@ -88,5 +100,7 @@ export function systemMessageCoalesceKey(message: SessionSystemMessage): string 
       return `channel_routine:${message.prompt}`;
     case "channel_follow_up":
       return "channel_follow_up";
+    case "channel_task_check_in":
+      return `channel_task_check_in:${message.taskId}`;
   }
 }

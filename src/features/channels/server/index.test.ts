@@ -11,6 +11,7 @@ import { createTestDatabase } from "@/server/database";
 import { detachManagedSession } from "@/server/managedSessions";
 import * as sessions from "@sessions/server/providers";
 import * as sessionRuntime from "@sessions/server/runtime";
+import { setSessionProvider } from "@sessions/server/state/sessions";
 import { normalizeToolResult, type Tool } from "@sessions/server/tools/definition";
 import * as workspaceEvents from "@workspace/server/events";
 import { setSessionStatus } from "@workspace/server/state";
@@ -76,9 +77,9 @@ async function openChannels() {
   return new ChannelDatabase(database);
 }
 
-async function invokeTool(name: string, input = {}, sessionId = "coordinator") {
+async function invokeTool(name: string, input = {}, sessionId = "coordinator", agentOnly = false) {
   const tool = [
-    ...channelTools,
+    ...(agentOnly ? [] : channelTools),
     createChannelMembersTool,
     ...channelMemberTools,
     ...channelLeadTools,
@@ -539,6 +540,193 @@ test("a Session can seed and passively read Channel context", async () => {
   });
 });
 
+test("agents receive full context until their read cursor advances, even requesting compact", async () => {
+  const channels = await openChannels();
+  const channel = await createStoredChannel(channels, { name: "Orientation", ...CHANNEL_DEFAULTS });
+  for (const input of [{}, { detail: "compact" }]) {
+    const result = await invokeTool("read_channel", input, channel.id, true);
+    expect(result.channel.name).toBe(channel.name);
+    expect(result.messages).toEqual([]);
+  }
+  await channels.appendMessage({
+    channelId: channel.id,
+    id: "first",
+    sender: { type: "user" },
+    content: "Start here.",
+  });
+  expect(await invokeTool("read_channel", { detail: "compact" }, channel.id, true)).toMatchObject({
+    channel: { name: channel.name },
+    messages: [{ content: "Start here." }],
+  });
+  expect(await invokeTool("read_channel", {}, channel.id, true)).toEqual({
+    unfinishedTasks: [],
+    agents: [],
+    messages: [],
+    hasMore: false,
+  });
+});
+
+test("compact reads scope tasks and live statuses without losing idle authors or full context", async () => {
+  setSystemTime(new Date("2026-10-23T15:00:00.000Z"));
+  onTestFinished(() => setSystemTime());
+  const channels = await openChannels();
+  const channel = await createStoredChannel(channels, { name: "Catch up", ...CHANNEL_DEFAULTS });
+  const { member: builder } = await channels.createMember(
+    channelAgent(channel.id, "builder", "Builder"),
+  );
+  const { member: reviewer } = await channels.createMember(
+    channelAgent(channel.id, "reviewer", "Reviewer"),
+  );
+  await channels.updateMember(builder.id, { role: "Build. ".repeat(1_000) });
+  await channels.updateMember(reviewer.id, { role: "Review. ".repeat(1_000) });
+  const mine = {
+    id: "mine",
+    title: "Build",
+    status: "in_progress",
+    ownerId: builder.id,
+  } as const;
+  const other = { id: "other", title: "Review", status: "blocked", ownerId: reviewer.id } as const;
+  const unassigned = { id: "next", title: "Next", status: "pending" } as const;
+  const tasks = [
+    {
+      id: "archive",
+      title: "Shipped",
+      status: "done" as const,
+      children: Array.from({ length: 50 }, (_, index) => ({
+        id: `done${index}`,
+        title: "Completed outcome with its retained history. ".repeat(5).trim(),
+        status: "done" as const,
+      })),
+    },
+    {
+      id: "milestone",
+      title: "Ship",
+      status: "in_progress" as const,
+      ownerId: channel.id,
+      children: [
+        { ...mine, checkInAt: "2026-10-23T15:05:00.000Z" },
+        other,
+        unassigned,
+        { id: "done", title: "Done", status: "done" as const },
+      ],
+    },
+  ];
+  await channels.updateChannel(channel.id, { tasks });
+  setSystemTime(new Date("2026-10-23T15:12:00.000Z"));
+  await channels.claimDueWakes(new Date());
+  const canonicalTasks = (await channels.getChannel(channel.id))!.tasks;
+  expect(await invokeTool("read_channel", { detail: "compact" }, builder.id, true)).toHaveProperty(
+    "channel",
+  );
+  await invokeTool("read_channel", {}, channel.id, true);
+  const { message } = await channels.appendMessage({
+    channelId: channel.id,
+    id: "handoff",
+    sender: { type: "agent", agentId: reviewer.id },
+    content: "The review is ready.",
+  });
+  const wait = {
+    state: "waiting" as const,
+    text: "Builder's result",
+    wakeAt: "2027-01-01T00:00:00Z",
+  };
+  await channels.setAgentStatus(channel.id, wait);
+  await channels.setAgentStatus(builder.id, {
+    state: "working",
+    text: "Building",
+    workingOn: message.sequence,
+  });
+  await channels.setAgentStatus(reviewer.id, { state: "working", text: "Stale work" });
+  setSessionStatus(builder.id, "running");
+  onTestFinished(() => deleteSessionState(builder.id));
+
+  const compact = await invokeTool("read_channel", {}, builder.id, true);
+  expect(Object.keys(compact).sort()).toEqual(["agents", "hasMore", "messages", "unfinishedTasks"]);
+  expect(compact.unfinishedTasks).toEqual([
+    { ...tasks[1], elapsedMinutes: 12, children: [{ ...mine, elapsedMinutes: 12 }] },
+  ]);
+  expect(compact.agents).toEqual([
+    { agentId: channel.id, name: "Lead", mention: "@lead", status: wait },
+    {
+      agentId: builder.id,
+      name: builder.name,
+      mention: "@builder",
+      status: { state: "working", text: "Building", workingOn: message.sequence },
+    },
+  ]);
+  expect(compact.messages).toMatchObject([
+    {
+      sequence: message.sequence,
+      sender: { type: "agent", agentId: reviewer.id, name: reviewer.name, mention: "@reviewer" },
+      content: message.content,
+    },
+  ]);
+  expect((await invokeTool("read_channel", {}, channel.id, true)).unfinishedTasks).toEqual([
+    {
+      ...tasks[1],
+      elapsedMinutes: 12,
+      children: [{ ...mine, elapsedMinutes: 12 }, other, unassigned],
+    },
+  ]);
+  const full = await invokeTool("read_channel", { detail: "full" }, builder.id, true);
+  expect(full).toEqual(
+    await invokeTool("read_channel", { channelId: channel.id, beforeSequence: 1 }),
+  );
+  expect(Buffer.byteLength(JSON.stringify(compact))).toBeLessThan(20_000);
+  expect(full.channel.tasks).toEqual(canonicalTasks);
+});
+
+test("compact and full reads share paging and preserve inline images and file attachments", async () => {
+  const channels = await openChannels();
+  const channel = await createStoredChannel(channels, { name: "Paging", ...CHANNEL_DEFAULTS });
+  const { member } = await channels.createMember(channelAgent(channel.id, "reader", "Reader"));
+  await invokeTool("read_channel", {}, member.id, true);
+  await channels.appendMessage({
+    channelId: channel.id,
+    id: "evidence",
+    sender: { type: "agent", agentId: "removed" },
+    content: "Evidence from a former member.",
+    attachments: [{ mimeType: "image/png", base64: PNG_BASE64 }, "/tmp/evidence.mp4"],
+  });
+  for (let index = 0; index < 100; index++) {
+    await channels.appendMessage({
+      channelId: channel.id,
+      id: `message${index}`,
+      sender: { type: "user" },
+      content: `Message ${index}`,
+    });
+  }
+  const tool = channelMemberTools.find(({ name }) => name === "read_channel") as Tool;
+  const result = normalizeToolResult(
+    await tool.handler(tool.parameters?.parse({}), {
+      sessionId: member.id,
+      toolCallId: "read",
+      toolName: "read_channel",
+      arguments: {},
+    }),
+  );
+  const text = result.content[0];
+  if (text?.type !== "text") throw new Error("Expected a text tool result.");
+  const compact = JSON.parse(text.text);
+  expect(compact.messages).toHaveLength(100);
+  expect(compact.hasMore).toBe(true);
+  expect(compact.messages[0]).toMatchObject({
+    sender: { type: "agent", agentId: "removed", name: "Deleted agent" },
+    content: "Evidence from a former member.",
+    attachments: [{ mimeType: "image/png", imageIndex: 0 }, "/tmp/evidence.mp4"],
+  });
+  expect(compact.messages[0].sender).not.toHaveProperty("mention");
+  expect(result.content.slice(1)).toEqual([
+    { type: "image", data: PNG_BASE64, mimeType: "image/png" },
+  ]);
+  expect(await invokeTool("read_channel", { detail: "full" }, member.id, true)).toMatchObject({
+    channel: { name: channel.name },
+    messages: [{ content: "Message 99" }],
+    hasMore: false,
+  });
+  expect((await invokeTool("read_channel", {}, member.id, true)).messages).toEqual([]);
+});
+
 test("committed edits and reads replay to the durable view and only a new purpose wakes the lead", async () => {
   const channels = await openChannels();
   const channel = await createStoredChannel(channels, { name: "Planning", ...CHANNEL_DEFAULTS });
@@ -685,6 +873,33 @@ test("editing member metadata publishes a roster change only when something chan
   expect(rosterChanges).toBe(1);
 });
 
+test("member model overrides can be cleared but cannot change an established provider", async () => {
+  const channels = await openChannels();
+  const channel = await createStoredChannel(channels, { name: "Models", ...CHANNEL_DEFAULTS });
+  const { member } = await channels.createMember(channelAgent(channel.id, "builder", "Builder"));
+  onTestFinished(() => releaseChannelEvents(channel.id));
+  const model = { provider: "claude", name: "sonnet" };
+
+  // Before a session exists, an explicit override may select any provider.
+  expect(await updateChannelMember({ agentId: member.id, model })).toMatchObject({ model });
+  await setSessionProvider(member.id, { id: model.provider, sessionId: member.id });
+  await expect(
+    updateChannelMember({
+      agentId: member.id,
+      model: { provider: "copilot", name: "gpt-5.5" },
+    }),
+  ).rejects.toThrow("A member's provider cannot change without losing its session history.");
+  expect((await channels.getMember(member.id))?.model).toEqual(model);
+
+  const replacement = { ...model, name: "opus" };
+  expect(await updateChannelMember({ agentId: member.id, model: replacement })).toMatchObject({
+    model: replacement,
+  });
+  expect(await updateChannelMember({ agentId: member.id, model: null })).not.toHaveProperty(
+    "model",
+  );
+});
+
 test("a Channel Agent publishes focus and settles temporary turn state", async () => {
   const channels = await openChannels();
 
@@ -795,6 +1010,48 @@ function spyOnDelivery() {
   });
   return deliver;
 }
+
+test("check-ins privately notify the assignee per task and publish the consumed snapshot once", async () => {
+  setSystemTime(new Date("2026-10-23T15:00:00.000Z"));
+  onTestFinished(() => setSystemTime());
+  const checkInAt = "2026-10-23T15:05:00.000Z";
+  const channels = await openChannels();
+  const channel = await createStoredChannel(channels, { name: "Check-ins", ...CHANNEL_DEFAULTS });
+  const { member } = await channels.createMember(channelAgent(channel.id, "builder", "Builder"));
+  await editChannelTasksFromLead(channel.id, {
+    operations: ["build", "verify"].map((id) => ({
+      type: "add" as const,
+      task: { id, title: id, status: "in_progress", ownerId: member.id, checkInAt },
+    })),
+  });
+  const before = await getChannelSnapshot(channel.id);
+  const events: ChannelEvent[] = [];
+  const unsubscribe = subscribeChannelEvents(channel.id, (event) => events.push(event));
+  onTestFinished(() => {
+    unsubscribe();
+    releaseChannelEvents(channel.id);
+  });
+  const deliver = spyOnDelivery();
+  await wakeDueChannelAgents(new Date(checkInAt));
+  await wakeDueChannelAgents(new Date("2026-10-23T15:06:00.000Z"));
+  expect(deliver.mock.calls).toEqual(
+    ["build", "verify"].map((id) => [
+      member.id,
+      {
+        immediate: true,
+        systemMessage: {
+          type: "channel_task_check_in",
+          taskId: id,
+          title: id,
+          checkInAt,
+        },
+      },
+    ]),
+  );
+  expect(events.map(({ type }) => type)).toEqual(["tasks"]);
+  const after = await getChannelSnapshot(channel.id);
+  expect(events.reduce(reduceChannelState, before!)).toEqual(after!);
+});
 
 test("a lead follow-up privately wakes it once when due", async () => {
   const channels = await openChannels();

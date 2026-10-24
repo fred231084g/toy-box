@@ -56,7 +56,7 @@ export function WorkspacePaneView({
   }
 
   return (
-    <PaneSlotsProvider slots={slots}>
+    <PaneSlotsProvider slots={slots} variant={variant}>
       {content}
       {children}
     </PaneSlotsProvider>

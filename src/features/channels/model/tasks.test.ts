@@ -1,14 +1,61 @@
 import { expect, test } from "bun:test";
 import {
   applyChannelTaskEdits,
+  channelTaskElapsedMinutes,
   channelTasksDiff,
   channelTasksComplete,
   editChannelTasksInputSchema,
+  reconcileChannelTaskTiming,
   type ChannelTask,
   type EditChannelTasksInput,
 } from "./tasks";
 
 const task = (id: string): ChannelTask => ({ id, title: id, status: "pending" });
+
+test("task timing follows stable IDs through rewrites and blocking, not supplied timestamps", () => {
+  const start = "2026-10-23T15:00:00.000Z";
+  const later = "2026-10-23T15:20:00.000Z";
+  const running = { ...task("t1"), status: "in_progress" as const, startedAt: later };
+  const before = [task("t1")];
+  const started = reconcileChannelTaskTiming(before, [running], start);
+  expect(started).toEqual([{ ...running, startedAt: start }]);
+  const rewritten = reconcileChannelTaskTiming(
+    started,
+    [{ ...task("group"), children: [{ ...running, title: "Revised", status: "blocked" }] }],
+    later,
+  );
+  expect(rewritten[0]!.children).toEqual([
+    { ...running, title: "Revised", status: "blocked", startedAt: start },
+  ]);
+  expect(reconcileChannelTaskTiming(rewritten, [running], later)).toEqual(started);
+  expect(before).toEqual([task("t1")]);
+});
+
+test.each([
+  ["pending", "2026-10-23T15:10:00.000Z"],
+  ["done", undefined],
+] as const)("a %s reset clears age and completion cancels its check-in", (status, checkInAt) => {
+  const running = {
+    ...task("t1"),
+    status: "in_progress" as const,
+    startedAt: "2026-10-23T15:00:00.000Z",
+    checkInAt: "2026-10-23T15:10:00.000Z",
+  };
+  const later = "2026-10-23T15:20:00.000Z";
+  const reset = reconcileChannelTaskTiming([running], [{ ...running, status }], later);
+  expect(reset).toEqual([{ ...task("t1"), status, checkInAt }]);
+  expect(
+    reconcileChannelTaskTiming(reset, [{ ...reset[0]!, status: "in_progress" }], later),
+  ).toEqual([{ ...task("t1"), status: "in_progress", startedAt: later, checkInAt }]);
+});
+
+test("elapsed minutes are derived, optional, floored, and nonnegative", () => {
+  const now = "2026-10-23T15:20:00.000Z";
+  expect(channelTaskElapsedMinutes(task("t1"), Date.parse(now))).toBeUndefined();
+  const started = { startedAt: "2026-10-23T15:00:00.000Z" };
+  expect(channelTaskElapsedMinutes(started, Date.parse("2026-10-23T15:12:59.999Z"))).toBe(12);
+  expect(channelTaskElapsedMinutes(started, Date.parse("2026-10-23T14:59:00.000Z"))).toBe(0);
+});
 
 test("ordered edits target IDs, preserve omitted outcomes and descendants, and clear explicit nulls", () => {
   const tasks = [
@@ -102,8 +149,8 @@ test("a full group can move existing outcomes into a milestone without restating
   expect(root).toEqual(before);
 });
 
-test.each([{ id: "t3" }, { children: [] }])(
-  "patches cannot replace identity or descendants: %j",
+test.each([{ id: "t3" }, { children: [] }, { startedAt: "2026-10-23T15:00:00.000Z" }])(
+  "patches cannot replace identity, descendants, or server-owned timing: %j",
   (patch) => {
     expect(
       editChannelTasksInputSchema.safeParse({

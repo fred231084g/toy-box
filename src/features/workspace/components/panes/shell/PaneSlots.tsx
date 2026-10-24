@@ -1,16 +1,31 @@
-import { createContext, useContext, type ReactNode } from "react";
+import { createContext, use, type ReactNode } from "react";
 import { createPortal } from "react-dom";
+import type { PaneVariant } from "./WorkspacePaneView";
 
 export type PaneSlots = {
   actions: HTMLElement | null;
   status: HTMLElement | null;
 };
 
-const PaneSlotsContext = createContext<PaneSlots | null>(null);
+const PaneContext = createContext<{ slots: PaneSlots; variant: PaneVariant } | null>(null);
 
-/** Makes one host shell's positioned slots available to a workspace pane subtree. */
-export function PaneSlotsProvider({ slots, children }: { slots: PaneSlots; children: ReactNode }) {
-  return <PaneSlotsContext.Provider value={slots}>{children}</PaneSlotsContext.Provider>;
+/** Makes one host shell's slots and presentation available to a workspace pane subtree. */
+export function PaneSlotsProvider({
+  slots,
+  variant,
+  children,
+}: {
+  slots: PaneSlots;
+  variant: PaneVariant;
+  children: ReactNode;
+}) {
+  return <PaneContext.Provider value={{ slots, variant }}>{children}</PaneContext.Provider>;
+}
+
+export function usePaneVariant() {
+  const pane = use(PaneContext);
+  if (!pane) throw new Error("Pane content must be rendered within a workspace pane.");
+  return pane.variant;
 }
 
 /** Declares persistent pane actions in the host's upper-right chrome. */
@@ -20,7 +35,7 @@ export function PaneActions({ children }: { children: ReactNode }) {
 
 /** Whether this pane host currently provides chrome for persistent actions. */
 export function usePaneActionsAvailable(): boolean {
-  return useContext(PaneSlotsContext)?.actions != null;
+  return use(PaneContext)?.slots.actions != null;
 }
 
 /** Declares transient pane status in chrome positioned by the current host. */
@@ -29,7 +44,7 @@ export function PaneStatus({ children }: { children: ReactNode }) {
 }
 
 function PaneSlot({ target, children }: { target: keyof PaneSlots; children: ReactNode }) {
-  const slots = useContext(PaneSlotsContext);
-  const container = slots?.[target];
+  const pane = use(PaneContext);
+  const container = pane?.slots[target];
   return container ? createPortal(children, container) : null;
 }

@@ -2,7 +2,7 @@
 
 This unpacked Manifest V3 extension sends the current page, its visible viewport, an optional text selection, and your prompt to a configurable Toy Box Inbox endpoint.
 
-The extension defaults to `http://localhost:3100` for `bun dev`; installed Toy Box uses `http://localhost:3000`. Open **Server settings** from the popup—or the extension's options page—to use another HTTP or HTTPS server, such as its Tailscale URL. Enter only the server base URL; the extension always appends `/api/inbox`. The setting is local to the current browser profile.
+The extension defaults to `http://localhost:3100` for `bun dev`; installed Toy Box uses `http://localhost:3000`. Open **Server settings** from the popup—or the extension's options page—to use another HTTP or HTTPS server, such as its Tailscale URL. Enter only the server base URL; the extension always appends `/api/v1/inbox`. The setting is local to the current browser profile.
 
 ## Compatibility
 

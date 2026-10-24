@@ -2,7 +2,7 @@
 
 The browser extension lets users dispatch asynchronous tasks to Toy Box's Inbox from any webpage. Every task includes the page URL and the user's instructions, and can optionally include selected text and a screenshot of the visible viewport. This is useful for handing off work such as researching a topic, summarizing content, investigating a claim, or relating a page to local projects while the user keeps browsing and reviews the result later in the Inbox.
 
-A user can compose a custom task from the toolbar or keyboard shortcut, or invoke a context-menu quick action. Every path submits one background task to `/api/inbox`; the extension does not observe or control the session after submission.
+A user can compose a custom task from the toolbar or keyboard shortcut, or invoke a context-menu quick action. Every path submits one background task to `/api/v1/inbox`; the extension does not observe or control the session after submission.
 
 ## Runtime boundaries
 
@@ -33,7 +33,7 @@ The toolbar, keyboard shortcut, and custom context-menu action open the popup. Q
 - Treat selection and viewport capture as optional. Script injection and screenshots are unavailable on protected browser pages and can fail without invalidating the page task.
 - Send browser context only after an explicit toolbar, shortcut, or context-menu action. Avoid persistent page injection or broader host permissions without a concrete product requirement.
 - Keep custom server access optional. Request only the configured HTTP or HTTPS host from a direct options-page user action, and release the previous optional host when the setting changes.
-- Keep `inbox.js` aligned with the `/api/inbox` contract: JSON contains a non-empty `prompt` and optional base64 `attachments`.
+- Keep `inbox.js` aligned with the `/api/v1/inbox` contract: JSON contains a non-empty `prompt` and optional base64 `attachments`.
 - Keep popup state transitions explicit, keyboard-accessible, and compatible with light, dark, forced-color, and reduced-motion preferences.
 - Request the narrowest browser permissions that support the current behavior. `activeTab` is preferable to persistent access to every page.
 

@@ -5,6 +5,7 @@ import {
   channelTasksSchema,
   applyChannelTaskEdits,
   channelTasksComplete,
+  reconcileChannelTaskTiming,
   channelSystemMessageContentSchema,
   CHANNEL_LEAD_PROFILE,
   unassignChannelTasks,
@@ -57,6 +58,8 @@ export type StoredChannelMessage = ClientChannelMessage<StoredAttachment>;
 type ChannelMessage = StoredChannelMessage;
 type ChannelConversationMessage = ClientConversationMessage<StoredAttachment>;
 type ChannelEvent = ClientChannelEvent<StoredAttachment>;
+
+export class ChannelInputError extends Error {}
 
 /** A committed public change; catalog metadata is present only when it changed. */
 export type ChannelChange = {
@@ -563,8 +566,50 @@ export class ChannelDatabase {
           WHERE id = ${id}
         `;
       }
+      const checkIns: {
+        agentId: string;
+        taskId: string;
+        title: string;
+        checkInAt: string;
+      }[] = [];
+      const taskChanges: ChannelChange[] = [];
+      for (const row of await readChannelRows(db)) {
+        const channel = channelFromRow(row);
+        const claim = (tasks: readonly ChannelTask[]): ChannelTask[] =>
+          tasks.map((task) => {
+            const next = task.children ? { ...task, children: claim(task.children) } : task;
+            if (
+              task.status !== "in_progress" ||
+              !task.ownerId ||
+              !task.checkInAt ||
+              Date.parse(task.checkInAt) > now.getTime()
+            )
+              return next;
+            checkIns.push({
+              agentId: task.ownerId,
+              taskId: task.id,
+              title: task.title,
+              checkInAt: task.checkInAt,
+            });
+            return applyPatch(next, { checkInAt: null });
+          });
+        const tasks = claim(channel.tasks);
+        if (Bun.deepEquals(tasks, channel.tasks)) continue;
+        await db`UPDATE channels SET tasks = ${JSON.stringify(tasks)} WHERE id = ${channel.id}`;
+        taskChanges.push(
+          await recordChannelChange(db, channel, [
+            {
+              type: "tasks",
+              revision: await advanceRevision(db, channel.id),
+              tasks,
+            },
+          ]),
+        );
+      }
       return {
         followUps,
+        checkIns,
+        taskChanges,
         routines: routines.map(({ channel_id, title, prompt }) => ({
           channelId: channel_id,
           title,
@@ -611,9 +656,14 @@ async function updateChannelFields(
   actor: ChannelMessageActor,
 ) {
   if (changes.model && changes.model.provider !== current.model.provider) {
-    throw new Error("The lead's provider cannot change without losing its session history.");
+    throw new ChannelInputError(
+      "The lead's provider cannot change without losing its session history.",
+    );
   }
   const next = applyPatch(current, changes);
+  if (changes.tasks) {
+    next.tasks = reconcileChannelTaskTiming(current.tasks, changes.tasks, new Date().toISOString());
+  }
   const events: ChannelEvent[] = [];
   if (Bun.deepEquals(next, current)) {
     return { ...(await recordChannelChange(db, current, events)), purposeChanged: false };
@@ -935,7 +985,7 @@ async function assertMemberNameAvailable(
   if (!name) throw new Error("Channel members require a name.");
   const handle = agentHandleFromName(name);
   if (handle === agentHandleFromName(CHANNEL_LEAD_PROFILE.name)) {
-    throw new Error(`The intrinsic lead already uses the @${handle} mention.`);
+    throw new ChannelInputError(`The intrinsic lead already uses the @${handle} mention.`);
   }
   const workers = await new WorkerDatabase(db).list({ type: "channel", channelId });
   const conflict = workers.find(
@@ -945,7 +995,8 @@ async function assertMemberNameAvailable(
       worker.name &&
       agentHandleFromName(worker.name) === handle,
   );
-  if (conflict) throw new Error(`${conflict.name} already uses the @${handle} mention.`);
+  if (conflict)
+    throw new ChannelInputError(`${conflict.name} already uses the @${handle} mention.`);
 }
 
 function artifactFromRow(row: ChannelArtifactRow): ChannelArtifact {

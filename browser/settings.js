@@ -1,6 +1,6 @@
 export const DEFAULT_SERVER_URL = "http://localhost:3100";
 
-const INBOX_PATH = "/api/inbox";
+const INBOX_PATH = "/api/v1/inbox";
 const SERVER_URL_KEY = "serverUrl";
 const DEFAULT_HOST_PERMISSION = getHostPermission(DEFAULT_SERVER_URL);
 

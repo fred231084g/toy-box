@@ -1,26 +1,19 @@
-import type { MouseEvent, ReactNode } from "react";
-import { useHasModels } from "@providers/useModels";
+import type { ReactNode } from "react";
 import {
   ChevronDown,
-  Clock3,
-  FileText,
-  Folder,
   FolderOpen,
-  Hash,
   MessageCirclePlus,
-  Monitor,
   PanelLeft,
   PanelLeftClose,
-  Plus,
-  Settings,
-  Shapes,
-  SquareTerminal,
 } from "lucide-react";
+import { executeCommand } from "@/shared/commands/command";
+import { CommandButton } from "@/shared/commands/CommandButton";
+import { CommandMenuItem } from "@/shared/commands/CommandMenuItem";
+import { useCommand } from "@/shared/commands/CommandProvider";
 import { Button } from "@/shared/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
-  DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/shared/ui/dropdown-menu";
@@ -30,54 +23,31 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/shared/ui/tooltip";
 import { useWorkspaceSelector, useWorkspaceSessionActivity } from "@workspace/hooks/state";
 import { cn } from "@/shared/utils";
 
-export type SessionCreationOptions = {
-  addToWorkspace?: boolean;
-  artifact?: { path: string; content: string };
-};
-
 /** The box every sidebar action occupies, which is also what the rail is one of across. */
 const SIDEBAR_ACTION_SIZE = "size-6";
 
-/** One icon action shared by the expanded rows and collapsed rail. */
+/** One command's icon action, shared by the expanded rows and collapsed rail. */
 function SidebarAction({
-  label,
-  onClick,
+  command,
   variant = "ghost",
   className,
-  disabled,
-  showTooltip = true,
   children,
 }: {
-  label: string;
-  onClick: (event: MouseEvent<HTMLButtonElement>) => void;
+  command: string;
   variant?: "ghost" | "accent";
   className?: string;
-  disabled?: boolean;
-  showTooltip?: boolean;
-  children: ReactNode;
+  children?: ReactNode;
 }) {
-  const action = (
-    <Button
-      type="button"
+  return (
+    <CommandButton
+      command={command}
       variant={variant}
       size="icon"
       className={cn(SIDEBAR_ACTION_SIZE, className)}
-      onClick={onClick}
-      disabled={disabled}
-      aria-label={label}
       suppressHydrationWarning
     >
       {children}
-    </Button>
-  );
-
-  if (!showTooltip) return action;
-
-  return (
-    <Tooltip>
-      <TooltipTrigger render={action} />
-      <TooltipContent sideOffset={6}>{label}</TooltipContent>
-    </Tooltip>
+    </CommandButton>
   );
 }
 
@@ -91,19 +61,11 @@ export function ActionSpacer({ className }: { className?: string }) {
   return <div className={cn("shrink-0", SIDEBAR_ACTION_SIZE, className)} aria-hidden />;
 }
 
-export function CollapseToggle({
-  collapsed,
-  onToggle,
-}: {
-  collapsed: boolean;
-  onToggle: () => void;
-}) {
+export function CollapseToggle() {
+  const collapsed = !useCommand("workspace.toggleSidebar")?.checked;
+
   return (
-    <SidebarAction
-      label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-      onClick={onToggle}
-      showTooltip={false}
-    >
+    <SidebarAction command="workspace.toggleSidebar">
       {/* Stacked glyphs crossfade in place so the pinned button never resizes. */}
       <span className="relative size-4">
         <PanelLeftClose
@@ -119,28 +81,16 @@ export function CollapseToggle({
   );
 }
 
-type SidebarCreationActions = {
-  onCreateSession: (options?: SessionCreationOptions) => void;
-  onCreateAutomation: () => void;
-  onCreateChannel: () => void;
-};
 type SidebarCreationVariant = "header" | "rail";
 
 function SidebarCreationMenu({
-  onCreateSession,
-  onCreateAutomation,
-  onCreateChannel,
   disabled = false,
   variant,
-}: SidebarCreationActions & {
+}: {
   disabled?: boolean;
   variant: SidebarCreationVariant;
 }) {
   const rail = variant === "rail";
-
-  function createArtifactDraft(path: string, content = "") {
-    onCreateSession({ artifact: { path, content } });
-  }
 
   return (
     <DropdownMenu>
@@ -163,96 +113,79 @@ function SidebarCreationMenu({
         <ChevronDown className={rail ? "size-2.5" : "size-3.5"} />
       </DropdownMenuTrigger>
       <DropdownMenuContent align={rail ? "start" : "end"} side={rail ? "right" : "bottom"}>
-        <DropdownMenuItem onClick={() => createArtifactDraft("document.md")}>
-          <FileText />
-          New document
-        </DropdownMenuItem>
-        <DropdownMenuItem
-          onClick={() =>
-            createArtifactDraft(
-              "diagram.svg",
-              '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 800"></svg>\n',
-            )
-          }
-        >
-          <Shapes />
-          New whiteboard
-        </DropdownMenuItem>
+        <CommandMenuItem command="session.createDocument" />
+        <CommandMenuItem command="session.createWhiteboard" />
         <DropdownMenuSeparator />
-        <DropdownMenuItem onClick={onCreateAutomation}>
-          <Clock3 />
-          Create automation
-        </DropdownMenuItem>
-        <DropdownMenuItem onClick={onCreateChannel}>
-          <Hash />
-          Create channel
-        </DropdownMenuItem>
+        <CommandMenuItem command="automation.create" />
+        <CommandMenuItem command="channel.create" />
       </DropdownMenuContent>
     </DropdownMenu>
   );
 }
 
-export function SidebarSplitButton({
-  variant = "header",
-  ...actions
-}: SidebarCreationActions & { variant?: SidebarCreationVariant }) {
-  const hasModels = useHasModels();
+export function SidebarSplitButton({ variant = "header" }: { variant?: SidebarCreationVariant }) {
+  const disabled = useCommand("session.create")?.disabled ?? true;
   const rail = variant === "rail";
 
   return (
     <div className={cn("flex", rail && "group/create relative shrink-0")}>
       <SidebarAction
-        label="New session"
+        command="session.create"
         variant="accent"
         className={cn(
           !rail && "size-7 rounded-r-none",
           rail &&
-            hasModels &&
+            !disabled &&
             "group-hover/create:rounded-b-none group-has-[[data-slot=dropdown-menu-trigger]:focus-visible]/create:rounded-b-none group-has-data-[popup-open]/create:rounded-b-none",
         )}
-        disabled={!hasModels}
-        showTooltip={false}
-        onClick={(event) =>
-          actions.onCreateSession({ addToWorkspace: event.metaKey || event.ctrlKey })
-        }
-      >
-        <Plus />
-      </SidebarAction>
-      <SidebarCreationMenu {...actions} disabled={!hasModels} variant={variant} />
+      />
+      <SidebarCreationMenu disabled={disabled} variant={variant} />
     </div>
   );
 }
 
-export function HyperButton({ onToggle, isOpen }: { onToggle: () => void; isOpen: boolean }) {
+/** Toward the workspace: up from the footer, or right of the rail. */
+type MenuSide = "top" | "right";
+
+/** Starts or finds work from the sidebar, as one action: Hyper, or the command palette. */
+export function HyperMenu({ side }: { side: MenuSide }) {
   const hyperSessionId = useWorkspaceSelector((workspace) => workspace.hyperSessionIds[0]);
-  const hasModels = useHasModels();
+  const isOpen = useCommand("workspace.toggleHyper")?.checked ?? false;
 
   return (
-    <SidebarAction
-      label="Toggle hyper session"
-      onClick={onToggle}
-      disabled={!hasModels}
-      className="relative inline-flex"
+    <SidebarMenu
+      label="Hyper and search"
+      side={side}
+      commands={["workspace.toggleHyper", "workspace.search"]}
     >
       {hyperSessionId ? (
         <HyperSessionStatus sessionId={hyperSessionId} isOpen={isOpen} />
       ) : (
         <MessageCirclePlus />
       )}
-    </SidebarAction>
+    </SidebarMenu>
   );
 }
 
 /** Opens a file or a screen from the sidebar, as one action. */
-export function BrowseMenu({
-  onBrowseFiles,
-  onBrowseScreens,
+export function BrowseMenu({ side }: { side: MenuSide }) {
+  return (
+    <SidebarMenu label="Browse" side={side} commands={["files.browse", "screens.browse"]}>
+      <FolderOpen />
+    </SidebarMenu>
+  );
+}
+
+function SidebarMenu({
+  label,
   side,
+  commands,
+  children,
 }: {
-  onBrowseFiles: () => void;
-  onBrowseScreens: () => void;
-  /** Toward the workspace: up from the footer, or right of the rail. */
-  side: "top" | "right";
+  label: string;
+  side: MenuSide;
+  commands: readonly string[];
+  children: ReactNode;
 }) {
   return (
     <DropdownMenu>
@@ -262,65 +195,54 @@ export function BrowseMenu({
             type="button"
             variant="ghost"
             size="icon"
-            className={SIDEBAR_ACTION_SIZE}
-            aria-label="Browse"
+            className={cn(SIDEBAR_ACTION_SIZE, "relative")}
+            aria-label={label}
             suppressHydrationWarning
           />
         }
       >
-        <FolderOpen />
+        {children}
       </DropdownMenuTrigger>
       <DropdownMenuContent side={side} align={side === "top" ? "end" : "start"}>
-        <DropdownMenuItem onClick={onBrowseFiles}>
-          <Folder />
-          Files
-        </DropdownMenuItem>
-        <DropdownMenuItem onClick={onBrowseScreens}>
-          <Monitor />
-          Screens
-        </DropdownMenuItem>
+        {commands.map((command) => (
+          <CommandMenuItem key={command} command={command} />
+        ))}
       </DropdownMenuContent>
     </DropdownMenu>
   );
 }
 
 /** The terminal is a state the sidebar reports, not an action, so it presses. */
-export function TerminalToggle({
-  isTerminalOpen,
-  onToggleTerminal,
-}: {
-  isTerminalOpen: boolean;
-  onToggleTerminal: () => void;
-}) {
+export function TerminalToggle() {
+  const command = useCommand("workspace.toggleTerminal");
+  if (!command) return null;
+  const Icon = command.icon!;
+
   return (
     <Tooltip>
       <TooltipTrigger
         render={
           <Toggle
-            pressed={isTerminalOpen}
-            onPressedChange={() => onToggleTerminal()}
+            pressed={command.checked}
+            onPressedChange={() => void executeCommand(command)}
             size="sm"
             className={cn(
               SIDEBAR_ACTION_SIZE,
               "min-w-6 p-0 hover:bg-accent/50 hover:text-accent-foreground",
             )}
-            aria-label="Toggle terminal"
+            aria-label={command.title}
           >
-            <SquareTerminal />
+            <Icon />
           </Toggle>
         }
       />
-      <TooltipContent sideOffset={6}>Toggle terminal</TooltipContent>
+      <TooltipContent sideOffset={6}>{command.title}</TooltipContent>
     </Tooltip>
   );
 }
 
-export function SettingsButton({ onOpenSettings }: { onOpenSettings: () => void }) {
-  return (
-    <SidebarAction label="Edit settings" onClick={onOpenSettings} showTooltip={false}>
-      <Settings />
-    </SidebarAction>
-  );
+export function SettingsButton() {
+  return <SidebarAction command="workspace.settings" />;
 }
 
 function HyperSessionStatus({ sessionId, isOpen }: { sessionId: string; isOpen: boolean }) {

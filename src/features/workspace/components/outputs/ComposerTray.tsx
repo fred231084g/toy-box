@@ -1,4 +1,4 @@
-// The composer tray docks to the input. Its first row holds what the owner produced: artifacts
+// The composer tray is the input's top band. Its first row holds what the owner produced: artifacts
 // newest first, a checklist, and the owner's extra output. Once any output exists, empty artifact
 // and checklist slots preserve that row's shape. Owners stack anything else, such as queued
 // messages, below it, and the tray hides when nothing renders.
@@ -70,7 +70,8 @@ export function ComposerTray({
     onOpenArtifact ? onOpenArtifact(file) : focusedPaneAtom.set(createEditorPaneId(file));
 
   return (
-    <div className="mx-2 rounded-t-lg border border-b-0 bg-secondary-background p-1 empty:hidden">
+    // Ordered first so it stays above the input's block-start addons, such as attached images.
+    <div className="order-first self-stretch rounded-t-[inherit] border-b bg-secondary-background p-1 empty:hidden">
       {hasOutputs && (
         <div className="flex items-center gap-1.5 p-0.5 not-last:mb-1 not-last:border-b not-last:pb-1.5">
           <div className="flex min-w-0 flex-1 items-center gap-1.5">

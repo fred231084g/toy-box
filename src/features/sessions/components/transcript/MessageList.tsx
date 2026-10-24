@@ -15,6 +15,7 @@ import { TranscriptPlaceholder } from "./TranscriptPlaceholder";
 import { Message } from "./messages/Message";
 import { queuedMessageLayoutId } from "../composer/QueuedMessageList";
 import { ReasoningDisplay, StatusIndicator } from "./SessionStatus";
+import { messagesInView, type TranscriptView } from "./transcriptView";
 import {
   createMessageWindow,
   reconcileMessageWindow,
@@ -35,6 +36,7 @@ function isRenderableMessage(message: SessionTranscriptMessage): boolean {
 
 export function SessionMessageList({
   messages,
+  view = "all",
   isStreaming,
   isWaiting,
   status,
@@ -42,6 +44,7 @@ export function SessionMessageList({
   scrollToBottomRef,
 }: {
   messages: SessionTranscriptMessage[];
+  view?: TranscriptView;
   isStreaming: boolean;
   isWaiting: boolean;
   status: SessionStatus;
@@ -52,16 +55,17 @@ export function SessionMessageList({
 
   return (
     <StickToBottom
+      key={view}
       className="h-full bg-panel relative"
       resize={isStreaming ? "smooth" : "instant"}
       initial={false}
     >
       <VirtualizedMessageList
-        messages={messages}
+        messages={messagesInView(messages, view)}
         isStreaming={isStreaming}
         isWaiting={isWaiting}
         status={status}
-        reasoningContent={reasoningContent}
+        reasoningContent={view === "all" ? reasoningContent : ""}
         scrollToBottomRef={scrollToBottomRef}
       />
       <SessionScrollToBottomButton />

@@ -44,6 +44,9 @@ Each server value has one owning cache; cross-feature consumers compose those ca
 Provider availability and pin changes are published after persistence, then invalidate session
 catalog membership on every client. Provider changes also invalidate the provider catalog.
 Other preferences retain their existing optimistic updates.
+`defaultSessionView` seeds each newly opened active session pane, including historical sessions,
+without changing the view in already-mounted panes. It defaults to All messages; each pane can
+independently switch to Responses without writing the preference.
 Sidebar text, provider, and external-session filters are browser-local route state; they do not
 write workspace settings or alter open panes.
 
@@ -128,10 +131,12 @@ unrelated pane while retaining its publishers. Clearing focus restores the ordin
 - `passive` stays live without accepting input or acknowledging the session as read.
 
 Pane `variant` is a separate host concern. `WorkspacePaneView` maps one pane value to its feature
-component and scopes host-owned action and status slots around it. Descendants declare controls
-with `PaneActions` or `PaneStatus` without receiving DOM targets. This lets the grid and pager hosts
+component and supplies host-owned action and status slots and the presentation variant through one
+pane-shell context. Descendants declare controls with `PaneActions` or `PaneStatus` without receiving
+DOM targets. This lets the grid and pager hosts
 compose identical content for the main, mobile, and Hyper surfaces while preserving each feature's
-lifecycle.
+lifecycle. `PaneViewMenu` reads the host variant from that context and supplies shared view chooser
+chrome; Sessions and Channels declare their own view options and own selection and filtering.
 
 ## Layouts and compositions
 
@@ -173,6 +178,38 @@ runtime while transferring lifecycle management into the normal workspace.
 renders a passive session in a delayed hover popover. [`../sessions/components/SessionOverlay.tsx`](../sessions/components/SessionOverlay.tsx)
 is the reusable follow-up surface for session-backed output shown without its source session pane.
 
+## Commands and palette
+
+[`src/shared/commands`](../../shared/commands/) is the generic command mechanism: the `Command`
+value, `CommandProvider`, search and usage ranking, and the `CommandButton` and `CommandMenuItem`
+adapters. Every button, menu item, shortcut, and palette row runs through `executeCommand`, so a
+disabled command never runs and failures surface one way.
+
+A command is defined beside the state it acts on, and its ID names the capability (`files.browse`),
+not the module that defines it. [`commands.ts`](commands.ts) defines the workbench's commands for
+creating work and showing its surfaces. The main route owns that state, so it provides them through
+`CommandProvider`, which binds their shortcuts and supplies them through context to its descendants:
+the sidebar, palette, and dialogs reference them by ID during render, so the sidebar's header, rail,
+and footer render their command buttons in the server's HTML. Commands scoped to the focused pane,
+such as "This session", will need a focus-aware registry rather than more providers. Features build
+commands for their own items, such as
+[`../sessions/commands.ts`](../sessions/commands.ts) for a session's actions. Commands that open a
+shared dialog call `openWorkspaceDialog`, hosted by
+[`components/WorkspaceDialogs.tsx`](components/WorkspaceDialogs.tsx).
+
+[`components/palette/`](components/palette/) is the Mod+K palette, a composition over sessions,
+channels, apps, automations, files, and the provided commands. The sidebar's Hyper menu also runs
+`workspace.search`, which is how touch screens reach it. `palette.ts` is its pure model: a
+stack of pages (root, group, an item's actions, and the model, directory, and file pickers), each
+with its own query and selection, plus the launch options chosen for new work: a model and a
+`SessionLocation`, whose worktree defaults to the workspace's setting. `usePaletteView` builds each page's sections from feature queries
+and provided commands, and `CommandPalette` owns the dialog, keyboard, running, and the desktop
+peek. Search reads only what a row shows, its title and detail. Matches rank by where the query
+occurs, then by frequent use; commands and places rank above
+content at a comparable match because their titles lead with a verb. A query that names nothing can
+start work with it: "New session" starts headlessly through `sessionMutations.startSession()`, as
+Inbox Send does, then opens the running session's pane; "Run in Inbox" dispatches an Inbox task.
+
 ## Ownership and extension
 
 - [`router.tsx`](router.tsx) constructs the TanStack Start router, while [`routes.ts`](routes.ts)
@@ -198,7 +235,8 @@ is the reusable follow-up surface for session-backed output shown without its so
 To add a pane kind, define its stable identity and source relationship, render it once in
 `WorkspacePaneView`, and extend ordering or focus policy only when product behavior requires it. To
 add a workflow, compose existing panes and choose its host, focus surface, and session interaction
-mode.
+mode. To add a workbench command, define it in `commands.ts` over route state; the palette,
+shortcuts, and any `CommandButton` that references its ID pick it up.
 
 Preserve these invariants:
 

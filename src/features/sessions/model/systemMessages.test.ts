@@ -8,6 +8,20 @@ import {
 } from "./systemMessages";
 
 describe("Session system messages", () => {
+  test("task checkpoints survive history and do not coalesce distinct expired tasks", () => {
+    const message = {
+      type: "channel_task_check_in",
+      taskId: "build",
+      title: "Build",
+      checkInAt: "2026-10-23T15:20:00.000Z",
+    } as const;
+    expect(decodeSystemMessage(encodeSystemMessage(message))).toEqual(message);
+    expect(systemMessageLabel(message)).toBe("Task check-in: Build");
+    expect(systemMessageCoalesceKey(message)).not.toBe(
+      systemMessageCoalesceKey({ ...message, taskId: "verify" }),
+    );
+  });
+
   test("round-trips structured display content separately from the model prompt", () => {
     const message = {
       type: "file_edited",

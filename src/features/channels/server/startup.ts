@@ -18,7 +18,7 @@ export default async function startChannels(): Promise<VoidFunction> {
     const status = getSessionState(worker.sessionId)?.status;
     if (status !== "running" && status !== "waiting") await clearWorkingStatus(worker.sessionId);
   }
-  const timer = setInterval(() => void wakeDueChannelAgents(), 30_000);
+  const timer = setInterval(() => void wakeDueChannelAgents(), 60_000);
   timer.unref?.();
   return () => {
     unsubscribe();

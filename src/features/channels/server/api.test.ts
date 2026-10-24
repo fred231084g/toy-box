@@ -1,14 +1,33 @@
 import { expect, onTestFinished, spyOn, test } from "bun:test";
-import type { ChannelMessage, ChannelObservationEvent } from "@channels/model";
+import {
+  CHANNEL_LEAD_PROFILE,
+  type ChannelMessage,
+  type ChannelObservationEvent,
+} from "@channels/model";
+import * as providers from "@providers/server";
+import * as sessionRuntime from "@sessions/server/runtime";
+import { setSessionProvider } from "@sessions/server/state/sessions";
 import { broadcast } from "@workspace/server/events";
 import { setSessionStatus } from "@workspace/server/state";
 import { deleteSessionState } from "@workspace/server/state/sessions";
+import * as workspaceSettings from "@workspace/server/state/settings";
+import { DEFAULT_SETTINGS } from "@workspace/model/config/settings";
 import * as database from "@/server/database";
+import { detachManagedSession } from "@/server/managedSessions";
 import {
+  createChannelResponse,
+  deleteChannelResponse,
+  deleteChannelRoutineResponse,
+  editChannelResponse,
   getChannelHistoryResponse,
   getChannelResponse,
+  listChannelMemberModelsResponse,
+  listChannelsResponse,
   markChannelReadResponse,
   postChannelMessageResponse,
+  removeChannelMemberResponse,
+  runChannelRoutineResponse,
+  updateChannelMemberResponse,
 } from "./api";
 import { ChannelDatabase } from "./database";
 import { resolveEventResources } from "./resources";
@@ -448,6 +467,164 @@ test("HTTP rejects malformed bodies, channel overrides, unsupported content type
   expect(
     (await postChannelMessageResponse("missing", post({ id: "m", content: "Hi" }))).status,
   ).toBe(404);
+});
+
+test("the HTTP catalog names working agents the way Channel presence does", async () => {
+  const { channel, channels } = await openChannel();
+  await channels.createMember(channelAgent(channel.id, "idle", "Idle"));
+  const { member: busy } = await channels.createMember(channelAgent(channel.id, "busy", "Busy"));
+  onTestFinished(() => deleteSessionState(busy.id));
+  setSessionStatus(channel.id, "running");
+  setSessionStatus(busy.id, "running");
+
+  const response = await listChannelsResponse();
+  expect(response.headers.get("Cache-Control")).toBe("no-store");
+  const catalog = await response.json();
+  expect(catalog.version).toBe(1);
+  expect(catalog.working.sort()).toEqual([busy.id, channel.id].sort());
+  // Every Channel's lead shares one profile, so clients draw it without a copy of their own.
+  expect(catalog.lead).toEqual(CHANNEL_LEAD_PROFILE);
+  expect(catalog.members.map(({ id }: { id: string }) => id)).not.toContain(channel.id);
+});
+
+test("HTTP edits rename a Channel and reject empty, overriding and unknown edits", async () => {
+  const { channel } = await openChannel();
+  const response = await editChannelResponse(channel.id, post({ name: "Workshop" }));
+  expect(response.status).toBe(200);
+  expect(await response.json()).toMatchObject({
+    version: 1,
+    channel: { id: channel.id, name: "Workshop" },
+  });
+  for (const body of [{}, { name: "Other", channelId: "other" }, { directory: "/tmp" }]) {
+    expect((await editChannelResponse(channel.id, post(body))).status).toBe(400);
+  }
+  expect((await editChannelResponse("missing", post({ name: "Gone" }))).status).toBe(404);
+  expect((await createChannelResponse(post({ name: "No model" }))).status).toBe(400);
+  expect((await deleteChannelResponse("missing")).status).toBe(404);
+  const providerChange = await editChannelResponse(
+    channel.id,
+    post({ model: { provider: "claude", name: "sonnet" } }),
+  );
+  expect(providerChange.status).toBe(422);
+});
+
+test.each([new Error("Private database details"), "Private non-Error failure"])(
+  "unexpected HTTP management failures return a generic 500 (%s)",
+  async (error) => {
+    const { channel } = await openChannel();
+    const failure = spyOn(ChannelDatabase.prototype, "editChannel").mockRejectedValue(error);
+    const logging = spyOn(console, "error").mockImplementation(() => {});
+    onTestFinished(() => {
+      failure.mockRestore();
+      logging.mockRestore();
+    });
+    const response = await editChannelResponse(channel.id, post({ name: "Workshop" }));
+    expect(response.status).toBe(500);
+    expect(await response.json()).toEqual({ error: `Unable to edit Channel ${channel.id}.` });
+    expect(logging).toHaveBeenCalledWith(`Failed to edit Channel ${channel.id}:`, error);
+  },
+);
+
+test("HTTP member commands reach only members of the routed Channel", async () => {
+  const { channel, channels } = await openChannel();
+  const other = await createStoredChannel(channels, {
+    name: "Elsewhere",
+    model: { provider: "copilot", name: "gpt-5.5" },
+  });
+  const { member } = await channels.createMember(channelAgent(channel.id, "builder", "Builder"));
+  const cleanup = spyOn(sessionRuntime, "deleteSessionIfExists").mockImplementation(async (id) => {
+    await detachManagedSession(id);
+    return true;
+  });
+  onTestFinished(() => {
+    cleanup.mockRestore();
+    releaseChannelEvents(other.id);
+    deleteSessionState(member.id);
+  });
+
+  const update = await updateChannelMemberResponse(channel.id, member.id, post({ role: "Build" }));
+  expect(update.status).toBe(200);
+  expect(await update.json()).toMatchObject({
+    version: 1,
+    member: { id: member.id, name: "Builder", role: "Build" },
+  });
+  const reserved = await updateChannelMemberResponse(channel.id, member.id, post({ name: "Lead" }));
+  expect(reserved.status).toBe(422);
+  expect(await reserved.json()).toEqual({
+    error: "The intrinsic lead already uses the @lead mention.",
+  });
+  for (const body of [{}, { role: "Build", agentId: "other" }]) {
+    expect((await updateChannelMemberResponse(channel.id, member.id, post(body))).status).toBe(400);
+  }
+  expect((await updateChannelMemberResponse(other.id, member.id, post({ role: "X" }))).status).toBe(
+    404,
+  );
+  // The intrinsic lead is never a member, so it cannot be edited or removed as one.
+  expect(
+    (await updateChannelMemberResponse(channel.id, channel.id, post({ role: "X" }))).status,
+  ).toBe(404);
+  expect((await removeChannelMemberResponse(channel.id, channel.id)).status).toBe(404);
+  expect((await removeChannelMemberResponse(other.id, member.id)).status).toBe(404);
+
+  expect((await removeChannelMemberResponse(channel.id, member.id)).status).toBe(204);
+  expect((await removeChannelMemberResponse(channel.id, member.id)).status).toBe(404);
+});
+
+test("HTTP member models scope choices and allow clearing incompatible defaults", async () => {
+  const { channel, channels } = await openChannel();
+  const catalog = spyOn(providers, "getProviderCatalog").mockResolvedValue({
+    providers: [],
+    models: [
+      { id: "gpt-5.5", name: "GPT-5.5", provider: "copilot" },
+      { id: "sonnet", name: "Sonnet", provider: "claude" },
+    ],
+  });
+  const settings = spyOn(workspaceSettings, "getSettings").mockResolvedValue({
+    ...DEFAULT_SETTINGS,
+    defaultModel: { provider: "copilot", name: "gpt-5.5" },
+  });
+  const { member } = await channels.createMember(channelAgent(channel.id, "builder", "Builder"));
+  onTestFinished(() => {
+    catalog.mockRestore();
+    settings.mockRestore();
+    deleteSessionState(member.id);
+  });
+  const models = async () => (await listChannelMemberModelsResponse(channel.id, member.id)).json();
+
+  expect(await models()).toMatchObject({
+    version: 1,
+    provider: null,
+    models: [{ id: "gpt-5.5" }, { id: "sonnet" }],
+  });
+  await channels.updateMember(member.id, { model: { provider: "claude", name: "sonnet" } });
+  expect(await models()).toMatchObject({
+    provider: "claude",
+    models: [{ id: "sonnet" }],
+    defaultModel: null,
+  });
+
+  await setSessionProvider(member.id, { id: "claude", sessionId: member.id });
+  const back = post({ model: { provider: "copilot", name: "gpt-5.5" } });
+  expect((await updateChannelMemberResponse(channel.id, member.id, back)).status).toBe(422);
+  // Clearing an override preserves the session provider, even with a different workspace default.
+  const inherit = await updateChannelMemberResponse(channel.id, member.id, post({ model: null }));
+  expect(inherit.status).toBe(200);
+  expect((await inherit.json()).member).not.toHaveProperty("model");
+  expect(await models()).toMatchObject({ provider: "claude", defaultModel: null });
+
+  expect((await listChannelMemberModelsResponse(channel.id, channel.id)).status).toBe(404);
+});
+
+test("HTTP routine commands delete routines and report missing ones", async () => {
+  const { channel, channels } = await openChannel();
+  const { routine } = await channels.setRoutine(channel.id, {
+    title: "Morning check",
+    schedule: "0 9 * * 1-5",
+    prompt: "Review overnight progress.",
+  });
+  expect((await deleteChannelRoutineResponse(channel.id, routine.id)).status).toBe(204);
+  expect((await deleteChannelRoutineResponse(channel.id, routine.id)).status).toBe(404);
+  expect((await runChannelRoutineResponse(channel.id, routine.id)).status).toBe(404);
 });
 
 function post(body: unknown): Request {

@@ -1,5 +1,5 @@
 import { expect, onTestFinished, spyOn, test } from "bun:test";
-import * as inbox from "../server/functions";
+import * as inbox from "../../server/functions";
 import { Route } from "./inbox";
 
 const receipt = { sessionId: "accepted-task" };
@@ -16,10 +16,10 @@ async function post(init: RequestInit) {
     throw new Error("Inbox route must handle POST requests.");
   }
   const response = await handlers.POST({
-    request: new Request("http://toy-box.test/api/inbox", { ...init, method: "POST" }),
+    request: new Request("http://toy-box.test/api/v1/inbox", { ...init, method: "POST" }),
     context: undefined,
     params: {},
-    pathname: "/api/inbox",
+    pathname: "/api/v1/inbox",
     next: () => {
       throw new Error("Inbox requests must be handled by the Inbox route.");
     },

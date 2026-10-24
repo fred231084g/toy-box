@@ -3,7 +3,6 @@ import { z } from "zod";
 import type { Settings } from "@workspace/model/config/settings";
 import {
   areSettingsEqual,
-  isAccentColor,
   matchesSessionFeatureScope,
   normalizeSettings,
   settingsSchema,
@@ -15,6 +14,7 @@ describe("settings", () => {
     const settings: Settings = {
       accentColor: "#123abc",
       defaultModel: { provider: "copilot", name: "gpt-5", reasoningEffort: "high" },
+      defaultSessionView: "responses",
       terminalShell: "/bin/zsh",
       useWorktree: true,
       autoFocusArtifacts: "sessions",
@@ -41,6 +41,7 @@ describe("settings", () => {
       normalizeSettings({
         accentColor: "yellow",
         defaultModel: { name: "" },
+        defaultSessionView: "quiet",
         terminalShell: 42,
         useWorktree: "yes",
         autoFocusArtifacts: "occasionally",
@@ -58,6 +59,13 @@ describe("settings", () => {
       areSettingsEqual(settings, { ...settings, disabledProviders: ["copilot", "claude"] }),
     ).toBe(true);
     expect(areSettingsEqual(settings, { ...settings, disabledProviders: [] })).toBe(false);
+  });
+
+  test("the session view defaults to all and validates both choices for updates", () => {
+    expect(normalizeSettings({}).defaultSessionView).toBe("all");
+    expect(settingsUpdateSchema.safeParse({ defaultSessionView: "all" }).success).toBe(true);
+    expect(settingsUpdateSchema.safeParse({ defaultSessionView: "responses" }).success).toBe(true);
+    expect(settingsUpdateSchema.safeParse({ defaultSessionView: "quiet" }).success).toBe(false);
   });
 
   test("validates complete settings at the transport boundary", () => {
@@ -94,13 +102,6 @@ describe("settings", () => {
       },
     });
     expect("required" in jsonSchema).toBe(false);
-  });
-
-  test("recognizes six-digit hex accent colors", () => {
-    expect(isAccentColor("#facc15")).toBe(true);
-    expect(isAccentColor("#FACC15")).toBe(true);
-    expect(isAccentColor("#fff")).toBe(false);
-    expect(isAccentColor("yellow")).toBe(false);
   });
 
   test("compares settings by their domain fields", () => {
