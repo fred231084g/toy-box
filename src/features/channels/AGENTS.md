@@ -28,8 +28,8 @@ accountable for the purpose and for the quality of every member's outcome.
    finishes, optionally leaving a waiting status.
 4. **Involve the user.** The lead sends a question flagged as a request, or posts a result and
    completes the task list. The sidebar holds each until the user replies or reads it.
-5. **Keep going.** Follow-ups and routines privately wake the lead on a schedule, so ongoing work
-   advances without anyone posting.
+5. **Keep going.** Follow-ups privately wake waiting agents and routines wake the lead on a schedule,
+   so ongoing work advances without anyone posting.
 
 ## Domain model
 
@@ -158,9 +158,10 @@ lead exists for the Channel's lifetime and is addressed as `@lead`.
 
 ### Scheduled wakes
 
-- Wake a lead privately when its follow-up or one of its routines comes due, or when the user runs a
-  routine, through ordinary Session delivery. A run adds nothing to the transcript, and the lead
-  posts only if something needs the channel. Running a routine leaves its schedule unchanged.
+- Wake an agent privately when its follow-up comes due, or the lead when one of its routines comes
+  due or the user runs it, through ordinary Session delivery. A wake adds nothing to the transcript,
+  and the agent posts only if something needs the channel. Running a routine leaves its schedule
+  unchanged.
 
 ## Agent execution
 
@@ -211,9 +212,14 @@ already complete list never repeats it; reopening and finishing a task does.
 
 A turn start clears only a prior waiting status. Session completion clears any remaining working
 status; startup clears working status left behind by inactive executions. `finish_agent_turn` clears active status and its
-projected activity reaction, or leaves a concise waiting status, then closes the turn. Only the
-lead's version accepts `wakeAfterMinutes`, from 5 to 120, for a follow-up on a member or external
-work. The follow-up is the waiting status's `wakeAt`, so any earlier wake clears it.
+projected activity reaction, or leaves a concise waiting status. The agent then ends its turn normally;
+provider-enforced terminal execution is temporarily disabled pending
+[github/copilot-cli#4755](https://github.com/github/copilot-cli/issues/4755). The lead and members
+share the same tool: no arguments goes idle, `waitingFor` waits without a timeout, and adding
+`wakeAfterMinutes`, from 5 to 120, schedules a follow-up on a teammate or external work. The follow-up
+is the waiting status's `wakeAt`, so any earlier wake clears it. Agents do not schedule follow-ups
+while waiting on the user. Unmentioned user replies wake only the lead; members ask the lead to
+surface their request and mention them when they can continue.
 
 ## Persistence and streaming
 
@@ -459,13 +465,26 @@ presents one deleted identity everywhere.
   until the user replies. Hover previews `state.request`; clicking loads
   any older pages needed and scrolls to the question. Scrolling never changes the composer height.
 - The overview opens as a sheet or pins beside the transcript, which the workspace layout remembers.
+  Both presentations use the shared vertical scroll fade.
   It shows the purpose, directory, and preview, then the team with its presence, the shared
-  artifacts with when each was shared, the tasks, and any routines by title with their next
-  run, each expanding to its prompt and offering Run routine and Delete routine. A waiting lead shows
-  when its follow-up checks back.
+  artifacts newest first by when each was shared, the tasks, and any routines by title with their
+  next run, each expanding to its prompt and offering Run routine and Delete routine. A waiting agent
+  shows when its follow-up checks back. Team members, Task list, Artifacts, and Routines each
+  collapse independently through their heading, with all four expanded by default. Counts and task
+  diff totals remain visible while collapsed. The Task list's count badge independently toggles
+  an in-progress-only view, retaining and initially expanding every ancestor of an active task.
+  A blue dot and pressed state mark the active filter. Filtering changes visibility only: count badges
+  still describe their complete sibling lists, and diff totals remain unfiltered.
+  No matches reads "No tasks in progress."
+  The Team members count badge similarly toggles working agents only, using live presence and retaining
+  lead-first, alphabetical order. Its count still describes the complete team, and no matches reads
+  "No agents are working."
+  Both filters start off and leave section disclosure independent.
 - Both checklists share a task projection with stable identity and compact diff totals (exact counts
-  on hover and for assistive technology). Naturally sized counts and owners float beside the first
-  title line, without reserved columns. Pending rows omit diff counts; reported zeros use the same
+  on hover and for assistive technology). The shared checklist owns filter visibility and muted
+  italic empty-message styling; hosts supply the message. Task running time has a leading clock icon,
+  both in muted text. Naturally sized counts and owners float beside the first title line, without reserved
+  columns. Pending rows omit diff counts; reported zeros use the same
   added/removed colors as other counts. Counts and avatars keep their normal colors on done rows.
   Artifact references stay on their directly attributed tasks and never roll up. Artifact icon actions
   share that detail slot and open ordinary file panes without toggling the parent; their hover

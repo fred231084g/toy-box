@@ -1,3 +1,10 @@
+## 📅 v0.3.3 (10/26/26)
+
+- The channel overview now allows collapsing sections (e.g. `Team`, `Tasks`, etc.)
+- Channel tasks now track and display how long an in-progress task has been running, and a lead can set a "check-in time" on a task.
+- Channel members can now set a wait timeout when finishing a turn (like the lead always could)
+- The channel task list can now be filtered to in progress items only. The team list can also be filtered in running members only
+
 ## 📅 v0.3.2 (10/21/26)
 
 - Introduced a command palette for automating common tasks

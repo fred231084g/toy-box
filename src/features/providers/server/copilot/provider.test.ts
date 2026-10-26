@@ -4,7 +4,6 @@ import type { SessionEvent } from "@sessions/model";
 import * as client from "./client";
 import { copilotProvider, toSubscription } from "./provider";
 import * as computerUse from "./computerUse";
-import { saveGeneratedImages } from "./generatedImages";
 
 beforeEach(() => {
   const servers = spyOn(computerUse, "computerUseServers").mockResolvedValue({
@@ -98,7 +97,7 @@ test("creation uses the canonical ID and configures the working directory", asyn
       sessionId: "public",
       workingDirectory: "/repo",
       mcpServers: { "computer-use": { type: "stdio", command: "/copilot/computer-use-mcp" } },
-      hooks: { onPostToolUse: saveGeneratedImages },
+      imageGeneration: { enabled: true },
     }),
   );
   expect(connection.provider).toEqual({
@@ -143,7 +142,7 @@ test("resume requests the configured model and computer use from the native sess
       reasoningEffort: "max",
       contextTier: "long_context",
       mcpServers: { "computer-use": { type: "stdio", command: "/copilot/computer-use-mcp" } },
-      hooks: { onPostToolUse: saveGeneratedImages },
+      imageGeneration: { enabled: true },
     }),
   );
 });

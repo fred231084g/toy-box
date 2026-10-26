@@ -18,7 +18,6 @@ import { toSdkSessionModelOptions } from "./modelConfiguration";
 import { toSessionSkills } from "./skills";
 import { createSdkEventProjector } from "./projector";
 import { computerUseServers } from "./computerUse";
-import { saveGeneratedImages } from "./generatedImages";
 
 export const copilotProvider: SessionProvider = {
   id: "copilot",
@@ -189,7 +188,6 @@ async function nativeConfiguration(
     enableConfigDiscovery: true,
     mcpServers: await computerUseServers(client),
     imageGeneration: { enabled: true },
-    hooks: { onPostToolUse: saveGeneratedImages },
     enableSkills: true,
     skillDirectories: configuration.skillDirectories,
     systemMessage: { mode: "append", content: configuration.instructions },

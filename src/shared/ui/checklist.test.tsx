@@ -50,3 +50,69 @@ test("starts done parents collapsed without hiding their supporting actions", ()
   expect(html).toContain('aria-label="Subtasks of Research"');
   expect(html).toContain('aria-label="1 of 2 subtasks complete"');
 });
+
+test("filtering preserves ancestry and progress without unrelated work", () => {
+  const items: ChecklistItem[] = [
+    {
+      id: "parent",
+      title: "Planning parent",
+      status: "pending",
+      children: [
+        {
+          id: "ancestor",
+          title: "Completed ancestor",
+          status: "done",
+          children: [
+            { id: "active", title: "Active descendant", status: "in_progress" },
+            { id: "finished", title: "Finished sibling", status: "done" },
+          ],
+        },
+        { id: "waiting", title: "Waiting sibling", status: "blocked" },
+      ],
+    },
+    {
+      id: "active-parent",
+      title: "Active parent",
+      status: "in_progress",
+      children: [{ id: "queued", title: "Queued child", status: "pending" }],
+    },
+    { id: "unrelated", title: "Unrelated root", status: "pending" },
+  ];
+  const before = structuredClone(items);
+  const html = renderToStaticMarkup(<Checklist items={items} filter="inProgress" />);
+  const text = html.replace(/<[^>]+>/g, "");
+  for (const title of [
+    "Planning parent",
+    "Completed ancestor",
+    "Active descendant",
+    "Active parent",
+  ]) {
+    expect(text).toContain(title);
+  }
+  for (const title of ["Finished sibling", "Waiting sibling", "Queued child", "Unrelated root"]) {
+    expect(text).not.toContain(title);
+  }
+  expect(html).toContain('aria-label="1 of 2 subtasks complete"');
+  expect(html).toContain('aria-label="0 of 1 subtasks complete"');
+  expect(html).not.toContain('aria-label="Subtasks of Active parent"');
+  expect(items).toEqual(before);
+});
+
+test("filtering shows the empty state when no item or descendant is in progress", () => {
+  const html = renderToStaticMarkup(
+    <Checklist
+      items={[
+        {
+          id: "pending",
+          title: "Pending",
+          status: "pending",
+          children: [{ id: "blocked", title: "Blocked", status: "blocked" }],
+        },
+        { id: "done", title: "Done", status: "done" },
+      ]}
+      filter="inProgress"
+      emptyMessage="No tasks in progress."
+    />,
+  );
+  expect(html.replace(/<[^>]+>/g, "")).toBe("No tasks in progress.");
+});

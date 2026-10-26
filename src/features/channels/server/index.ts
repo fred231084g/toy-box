@@ -364,7 +364,7 @@ export async function setChannelAgentStatus(
   return status;
 }
 
-/** Ends a turn. A lead waiting on a member or external work can ask to wake after a delay. */
+/** Ends a turn. An agent waiting on a teammate or external work can ask to wake after a delay. */
 export async function finishChannelAgentTurn(
   sessionId: string,
   waitingFor?: string,

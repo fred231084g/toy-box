@@ -46,6 +46,10 @@ Flag settings turn on `autoCompactEnabled` whatever the owner's Claude setting, 
 conversations compact as Codex and Copilot sessions do. Model switches merge into those settings,
 so the session keeps compacting.
 
+A turn's result reports the context its latest request sent. A compaction's own count omits the
+system prompt and tools, so a turn that ends on one, such as `/compact`, or before any request is
+measured with the CLI's token-count API before native idle ends it.
+
 `tools.ts` registers the supplied tools with the official MCP SDK in process, passing that
 instance to the Agent SDK. There is no HTTP server or custom transport. Full Zod schemas
 preserve refinements and recursive JSON fields; use the app's MCP/Zod dependencies because

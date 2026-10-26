@@ -92,10 +92,6 @@ check the list whenever a provider is upgraded:
   `readDirectory` reads the first transcript entry that records one instead. Remove once the SDK
   finds it itself.
 - Copilot computer use (`server/copilot/computerUse.ts`): headless SDK servers load no built-in
-  plugins, so sessions cannot request computer use (seen through CLI 1.0.100-1). Respect the
+  plugins, so sessions cannot request computer use (seen through CLI 1.0.104-1). Respect the
   user's opt-in by registering that runtime version's bundled stdio server. Remove when the SDK
   exposes activation or headless honors the setting.
-- Copilot generated images (`server/copilot/generatedImages.ts`): `image_generation` returns images
-  without saving them and has no output path (seen through CLI 1.0.100-1). A post-tool hook saves
-  them and reports the path so agents can attach them. Remove when Copilot writes them to disk
-  itself.

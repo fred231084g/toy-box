@@ -118,20 +118,26 @@ test("turn results report the main thread's latest request against its model's c
   ).toEqual([{ type: "context_usage_changed", usage: { tokens: 25_500, tokenWindow: 1_000_000 } }]);
 });
 
-test("compaction leaves the context a turn's result reports at its compacted size", () => {
+test("compaction leaves the context unknown until a request reports it", () => {
   const project = createClaudeProjector("test");
-  project(
+  const reply = (input_tokens: number) =>
     native({
       type: "assistant",
       message: {
-        id: "reply",
+        id: `reply-${input_tokens}`,
         model: "claude-sonnet-5",
         content: [],
-        usage: { input_tokens: 18_000, output_tokens: 255 },
+        usage: { input_tokens, output_tokens: 255 },
       },
       parent_tool_use_id: null,
-    }),
-  );
+    });
+  const result = native({
+    type: "result",
+    subtype: "success",
+    is_error: false,
+    modelUsage: { "claude-sonnet-5": { contextWindow: 1_000_000 } },
+  });
+  project(reply(18_000));
   project(
     native({
       type: "system",
@@ -139,17 +145,12 @@ test("compaction leaves the context a turn's result reports at its compacted siz
       compact_metadata: { trigger: "manual", pre_tokens: 18_255, post_tokens: 1_787 },
     }),
   );
+  expect(project(result)).toEqual([]);
 
-  expect(
-    project(
-      native({
-        type: "result",
-        subtype: "success",
-        is_error: false,
-        modelUsage: { "claude-sonnet-5": { contextWindow: 1_000_000 } },
-      }),
-    ),
-  ).toEqual([{ type: "context_usage_changed", usage: { tokens: 1_787, tokenWindow: 1_000_000 } }]);
+  project(reply(16_000));
+  expect(project(result)).toEqual([
+    { type: "context_usage_changed", usage: { tokens: 16_255, tokenWindow: 1_000_000 } },
+  ]);
 });
 
 test("a turn that ends in an API error fails with it once, live and in history", () => {

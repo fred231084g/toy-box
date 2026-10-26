@@ -70,8 +70,8 @@ export function createClaudeProjector(sessionId: string): (message: SDKMessage) 
   // The main thread's current native message and its committed text.
   let assistantId: string | undefined;
   let assistantText = "";
-  // The main thread's context, as its latest request sent it or compaction left it, and the model
-  // whose context window each turn's result reports.
+  // The main thread's context as its latest request sent it, and the model whose context window
+  // each turn's result reports.
   let mainContext: { model: string; tokens: number } | undefined;
 
   return (message) => {
@@ -114,11 +114,11 @@ export function createClaudeProjector(sessionId: string): (message: SDKMessage) 
               },
             ];
           }
-          case "compact_boundary": {
-            const tokens = message.compact_metadata.post_tokens;
-            if (mainContext && tokens !== undefined) mainContext = { ...mainContext, tokens };
+          case "compact_boundary":
+            // A compaction's own count omits the system prompt and tools, so the compacted
+            // context is unknown until a request reports it.
+            mainContext = undefined;
             return [];
-          }
           default:
             return [];
         }

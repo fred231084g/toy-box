@@ -181,7 +181,8 @@ export class ClaudeConnection implements SessionConnection {
           clientId = this.#pendingInputs.get(message.uuid);
           this.#pendingInputs.delete(message.uuid);
         }
-        for (const projected of project(message)) {
+        const events = project(message);
+        for (const projected of events) {
           if (
             clientId &&
             (projected.type === "user_message" || projected.type === "system_message")
@@ -194,6 +195,14 @@ export class ClaudeConnection implements SessionConnection {
             });
           } else this.#emit(projected);
         }
+        // A turn whose result cannot report the context, such as `/compact`, is measured before
+        // native idle ends it. Failed and stopped turns have already ended.
+        if (
+          message.type === "result" &&
+          !message.is_error &&
+          !events.some(({ type }) => type === "context_usage_changed")
+        )
+          await this.#measureContext(native);
       }
     } catch (failure) {
       error = String(failure);
@@ -202,6 +211,16 @@ export class ClaudeConnection implements SessionConnection {
     if (this.#native !== native) return;
     this.#emit({ type: "end", reason: "error", error });
     await this.disconnect();
+  }
+
+  /** The CLI counts its context with the token-count API; its estimates miss after compaction. */
+  async #measureContext(native: Query): Promise<void> {
+    const usage = await native.getContextUsage({ detail: "full" }).catch(() => undefined);
+    if (usage)
+      this.#emit({
+        type: "context_usage_changed",
+        usage: { tokens: usage.totalTokens, tokenWindow: usage.maxTokens },
+      });
   }
 
   #canUseTool(allowQuestions: boolean): CanUseTool {

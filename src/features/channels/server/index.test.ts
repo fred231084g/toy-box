@@ -1053,56 +1053,70 @@ test("check-ins privately notify the assignee per task and publish the consumed 
   expect(events.reduce(reduceChannelState, before!)).toEqual(after!);
 });
 
-test("a lead follow-up privately wakes it once when due", async () => {
-  const channels = await openChannels();
-  const channel = await createStoredChannel(channels, { name: "Deploy", ...CHANNEL_DEFAULTS });
-  const deliver = spyOnDelivery();
-  setSystemTime(new Date("2026-09-29T15:00:00.000Z"));
-  onTestFinished(() => setSystemTime());
+test.each(["lead", "member"] as const)(
+  "a %s follow-up privately wakes it once when due",
+  async (role) => {
+    const channels = await openChannels();
+    const channel = await createStoredChannel(channels, { name: "Deploy", ...CHANNEL_DEFAULTS });
+    const agentId =
+      role === "lead"
+        ? channel.id
+        : (await channels.createMember(channelAgent(channel.id, "builder", "Builder"))).member.id;
+    const deliver = spyOnDelivery();
+    setSystemTime(new Date("2026-09-29T15:00:00.000Z"));
+    onTestFinished(() => setSystemTime());
 
-  await finishChannelAgentTurn(channel.id, "CI to finish", 20);
-  expect((await channels.getAgent(channel.id))?.status).toEqual({
-    state: "waiting",
-    text: "CI to finish",
-    wakeAt: "2026-09-29T15:20:00.000Z",
-  });
-  await wakeDueChannelAgents(new Date("2026-09-29T15:19:00.000Z"));
-  expect(deliver).not.toHaveBeenCalled();
-  await wakeDueChannelAgents(new Date("2026-09-29T15:20:00.000Z"));
-  await wakeDueChannelAgents(new Date("2026-09-29T15:21:00.000Z"));
+    await finishChannelAgentTurn(agentId, "CI to finish", 20);
+    expect((await channels.getAgent(agentId))?.status).toEqual({
+      state: "waiting",
+      text: "CI to finish",
+      wakeAt: "2026-09-29T15:20:00.000Z",
+    });
+    await wakeDueChannelAgents(new Date("2026-09-29T15:19:00.000Z"));
+    expect(deliver).not.toHaveBeenCalled();
+    await wakeDueChannelAgents(new Date("2026-09-29T15:20:00.000Z"));
+    await wakeDueChannelAgents(new Date("2026-09-29T15:21:00.000Z"));
 
-  expect(deliver.mock.calls).toEqual([
-    [
-      channel.id,
-      {
-        systemMessage: { type: "channel_follow_up", waitingFor: "CI to finish" },
-        immediate: true,
-      },
-    ],
-  ]);
-  expect((await channels.getAgent(channel.id))?.status).toBeUndefined();
-});
+    expect(deliver.mock.calls).toEqual([
+      [
+        agentId,
+        {
+          systemMessage: { type: "channel_follow_up", waitingFor: "CI to finish" },
+          immediate: true,
+        },
+      ],
+    ]);
+    expect((await channels.getAgent(agentId))?.status).toBeUndefined();
+  },
+);
 
-test("a message that wakes the lead first cancels its follow-up", async () => {
-  const channels = await openChannels();
-  const channel = await createStoredChannel(channels, { name: "Deploy", ...CHANNEL_DEFAULTS });
-  const deliver = spyOnDelivery();
+test.each(["lead", "member"] as const)(
+  "a message that wakes the %s first cancels its follow-up",
+  async (role) => {
+    const channels = await openChannels();
+    const channel = await createStoredChannel(channels, { name: "Deploy", ...CHANNEL_DEFAULTS });
+    const agentId =
+      role === "lead"
+        ? channel.id
+        : (await channels.createMember(channelAgent(channel.id, "builder", "Builder"))).member.id;
+    const deliver = spyOnDelivery();
 
-  await finishChannelAgentTurn(channel.id, "CI to finish", 20);
-  await postChannelMessageFromSession("user-session", {
-    id: "update",
-    channelId: channel.id,
-    content: "CI passed.",
-  });
-  await wakeDueChannelAgents(new Date(Date.now() + 30 * 60_000));
+    await finishChannelAgentTurn(agentId, "CI to finish", 20);
+    await postChannelMessageFromSession("user-session", {
+      id: "update",
+      channelId: channel.id,
+      content: role === "lead" ? "CI passed." : "@builder CI passed.",
+    });
+    await wakeDueChannelAgents(new Date(Date.now() + 30 * 60_000));
 
-  expect(deliver.mock.calls).toEqual([
-    [
-      channel.id,
-      { systemMessage: { type: "channel_message", senderName: "the user" }, immediate: true },
-    ],
-  ]);
-});
+    expect(deliver.mock.calls).toEqual([
+      [
+        agentId,
+        { systemMessage: { type: "channel_message", senderName: "the user" }, immediate: true },
+      ],
+    ]);
+  },
+);
 
 test("a due routine privately wakes its lead without adding to the transcript", async () => {
   const channels = await openChannels();

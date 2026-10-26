@@ -25,9 +25,8 @@ attachment bytes without activating the session.
 Sessions opt in to native image generation, which is not persisted, on both create and resume.
 Images in a tool's native output (`result.contents`) become its result attachments; images sent
 only to the model (`binaryResultsForLlm`), such as `view` and screenshots, stay out of the transcript.
-`generatedImages.ts` is a post-tool hook that saves each generated image under
-`~/.copilot/generated_images/<session>/` and tells the model the path, as Codex does, so agents
-can attach it.
+Copilot saves each generated image under the session-state `images` folder and gives the model
+its path (`saved_to:`), as Codex does, so agents can attach it.
 
 Copilot uses the Sessions-owned UUID as its native session ID.
 The registry persists the provider and resolves native identity for resume, history, and deletion.

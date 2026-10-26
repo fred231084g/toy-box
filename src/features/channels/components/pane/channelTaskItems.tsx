@@ -1,4 +1,4 @@
-import { FileText } from "lucide-react";
+import { Clock3, FileText } from "lucide-react";
 import { useEffect, useState } from "react";
 import { AgentAvatar } from "@channels/components/agents/AgentAvatar";
 import {
@@ -80,8 +80,9 @@ export function channelTaskItems(
                 aria-label={ageLabel}
                 title={ageLabel}
                 suppressHydrationWarning
-                className="font-mono text-2xs tabular-nums italic text-muted-foreground"
+                className="inline-flex items-center gap-1 font-mono text-2xs tabular-nums italic text-muted-foreground"
               >
+                <Clock3 aria-hidden className="size-3 shrink-0" />
                 {elapsed}m{remaining === undefined ? "" : ` / ${remaining}m`}
               </time>
             )}

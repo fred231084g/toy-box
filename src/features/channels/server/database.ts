@@ -530,7 +530,7 @@ export class ChannelDatabase {
   }
 
   /**
-   * Claims every due follow-up and routine, so each wakes its lead once. A follow-up clears its
+   * Claims every due follow-up and routine, so each wakes its agent once. A follow-up clears its
    * waiting status. A routine moves past `now`, so runs missed while stopped collapse into one.
    */
   async claimDueWakes(now: Date) {

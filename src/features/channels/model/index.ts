@@ -117,7 +117,7 @@ export const channelAgentStatusSchema = z.discriminatedUnion("state", [
     .object({
       state: z.literal("waiting"),
       text: channelStatusTextSchema,
-      /** A lead follow-up: when to wake if nothing else wakes it first. */
+      /** When to wake if nothing else wakes this agent first. */
       wakeAt: z.iso.datetime().optional(),
     })
     .strict(),
@@ -194,6 +194,14 @@ export type ChannelArtifact = z.output<typeof channelArtifactSchema> & {
   /** Public resource address supplied by the server; never accepted as a command input. */
   url?: string;
 };
+
+export function channelArtifactsNewestFirst(
+  artifacts: readonly ChannelArtifact[],
+): ChannelArtifact[] {
+  return [...artifacts].sort(
+    (left, right) => Date.parse(right.sharedAt) - Date.parse(left.sharedAt),
+  );
+}
 
 const channelMessageActorSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("user") }).strict(),

@@ -1,4 +1,4 @@
-import { useRef, useState, type ReactNode } from "react";
+import { useRef, useState, type ComponentProps, type ReactNode } from "react";
 import { useMutation } from "@tanstack/react-query";
 import {
   ChevronRight,
@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { AgentItem } from "@channels/components/agents/AgentItem";
 import {
+  channelArtifactsNewestFirst,
   channelTasksDiff,
   type Channel,
   type ChannelArtifact,
@@ -33,6 +34,7 @@ import {
 } from "@/shared/ui/dropdown-menu";
 import { SectionHeading } from "@/shared/ui/section-heading";
 import { RelativeTime } from "@/shared/ui/relative-time";
+import { ScrollableFade } from "@/shared/ui/scrollable-fade";
 import { ShowMore, useShowMore } from "@/shared/ui/show-more";
 import { nextCronOccurrence } from "@/shared/cron";
 import { cn } from "@/shared/utils";
@@ -62,8 +64,13 @@ export function ChannelOverviewContent({
   onBrowseDirectory: () => void;
   onPreviewOpen: () => void;
 }) {
-  const { lead, members, agents } = useChannelPane();
-  const sortedMembers = [...members].sort((left, right) => left.name.localeCompare(right.name));
+  const { lead, members, agents, presence } = useChannelPane();
+  const [inProgressOnly, setInProgressOnly] = useState(false);
+  const [workingOnly, setWorkingOnly] = useState(false);
+  const showLead = !workingOnly || presence[lead.id]?.state === "working";
+  const visibleMembers = members
+    .filter((member) => !workingOnly || presence[member.id]?.state === "working")
+    .sort((left, right) => left.name.localeCompare(right.name));
   const completedCount = channel.tasks.filter(({ status }) => status === "done").length;
   const diff = channelTasksDiff(channel.tasks);
   const taskItems = useChannelTaskItems({
@@ -74,52 +81,67 @@ export function ChannelOverviewContent({
   });
 
   return (
-    <div className="min-h-0 flex-1 space-y-6 overflow-y-auto bg-panel p-4">
-      <div className="space-y-3">
-        {channel.purpose ? (
-          <ChannelPurpose purpose={channel.purpose} />
-        ) : (
-          <p className="text-sm leading-relaxed text-muted-foreground italic">
-            No purpose defined yet.
-          </p>
-        )}
-        {channel.directory && (
-          <button
-            type="button"
-            aria-label={`Browse ${channel.directory}`}
-            className="flex max-w-full rounded-full outline-none transition-opacity hover:opacity-75 focus-visible:ring-2 focus-visible:ring-ring"
-            onClick={onBrowseDirectory}
-          >
-            <SessionMetadataBadges cwd={channel.directory} />
-          </button>
-        )}
-        {channel.preview && (
-          <WorkspacePreview preview={channel.preview} variant="row" onOpen={onPreviewOpen} />
-        )}
-      </div>
+    <ScrollableFade axis="vertical" rootClassName="min-h-0 flex-1 bg-panel">
+      <div className="space-y-6 p-4">
+        <div className="space-y-3">
+          {channel.purpose ? (
+            <ChannelPurpose purpose={channel.purpose} />
+          ) : (
+            <p className="text-sm leading-relaxed text-muted-foreground italic">
+              No purpose defined yet.
+            </p>
+          )}
+          {channel.directory && (
+            <button
+              type="button"
+              aria-label={`Browse ${channel.directory}`}
+              className="flex max-w-full rounded-full outline-none transition-opacity hover:opacity-75 focus-visible:ring-2 focus-visible:ring-ring"
+              onClick={onBrowseDirectory}
+            >
+              <SessionMetadataBadges cwd={channel.directory} />
+            </button>
+          )}
+          {channel.preview && (
+            <WorkspacePreview preview={channel.preview} variant="row" onOpen={onPreviewOpen} />
+          )}
+        </div>
 
-      <OverviewSection title="Team members" count={members.length + 1}>
-        <div>
-          <div role="list" aria-label={`Team members in #${channel.name}`}>
-            <AgentItem agent={lead} action={<RowMenu name={lead.name} />} />
-            {sortedMembers.map((member) => (
-              <AgentItem
-                key={member.id}
-                agent={member}
-                action={
-                  <RowMenu name={member.name}>
-                    <DropdownMenuItem onClick={() => onEditMember(member)}>
-                      <Pencil /> Edit member
-                    </DropdownMenuItem>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem variant="destructive" onClick={() => onRemoveMember(member)}>
-                      <UserMinus /> Remove from channel
-                    </DropdownMenuItem>
-                  </RowMenu>
-                }
-              />
-            ))}
-          </div>
+        <OverviewSection
+          title="Team members"
+          count={agents.length}
+          countToggle={{
+            label: `Show only working agents (${agents.length} total)`,
+            pressed: workingOnly,
+            onToggle: () => setWorkingOnly((current) => !current),
+          }}
+        >
+          {showLead || visibleMembers.length > 0 ? (
+            <div role="list" aria-label={`Team members in #${channel.name}`}>
+              {showLead && <AgentItem agent={lead} action={<RowMenu name={lead.name} />} />}
+              {visibleMembers.map((member) => (
+                <AgentItem
+                  key={member.id}
+                  agent={member}
+                  action={
+                    <RowMenu name={member.name}>
+                      <DropdownMenuItem onClick={() => onEditMember(member)}>
+                        <Pencil /> Edit member
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem
+                        variant="destructive"
+                        onClick={() => onRemoveMember(member)}
+                      >
+                        <UserMinus /> Remove from channel
+                      </DropdownMenuItem>
+                    </RowMenu>
+                  }
+                />
+              ))}
+            </div>
+          ) : (
+            <p className="py-1 text-sm text-muted-foreground italic">No agents are working.</p>
+          )}
           <button
             type="button"
             className="flex w-full items-center gap-2.5 py-1 text-left text-xs text-muted-foreground hover:text-foreground"
@@ -130,52 +152,60 @@ export function ChannelOverviewContent({
             </span>
             Add an agent
           </button>
-        </div>
-      </OverviewSection>
+        </OverviewSection>
 
-      <OverviewSection
-        title="Task list"
-        count={`${completedCount}/${channel.tasks.length}`}
-        detail={diff && <TaskDiff diff={diff} />}
-      >
-        {channel.tasks.length > 0 ? (
-          <Checklist items={taskItems} className="text-sm" />
-        ) : (
-          <p className="text-sm text-muted-foreground italic">No tasks yet.</p>
-        )}
-      </OverviewSection>
+        <OverviewSection
+          title="Task list"
+          count={`${completedCount}/${channel.tasks.length}`}
+          detail={diff && <TaskDiff diff={diff} />}
+          countToggle={{
+            label: `Show only in-progress tasks (${completedCount} of ${channel.tasks.length} complete)`,
+            pressed: inProgressOnly,
+            onToggle: () => setInProgressOnly((current) => !current),
+          }}
+        >
+          <Checklist
+            items={taskItems}
+            filter={inProgressOnly ? "inProgress" : "none"}
+            className="text-sm"
+            emptyMessage={inProgressOnly ? "No tasks in progress." : "No tasks yet."}
+          />
+        </OverviewSection>
 
-      <OverviewSection title="Artifacts" count={artifacts.length}>
-        {artifacts.length > 0 ? (
-          <div role="list" aria-label={`Artifacts in #${channel.name}`} className="flex flex-col">
-            {artifacts.map((artifact) => (
-              <ArtifactPill
-                key={artifact.id}
-                file={artifact.file}
-                label={artifact.title}
-                detail={<RelativeTime className="text-muted-foreground" date={artifact.sharedAt} />}
-                className="w-full text-foreground"
-                onClick={() => onArtifactOpen(artifact)}
-              />
-            ))}
-          </div>
-        ) : (
-          <p className="text-sm text-muted-foreground italic">No artifacts shared yet.</p>
-        )}
-      </OverviewSection>
+        <OverviewSection title="Artifacts" count={artifacts.length}>
+          {artifacts.length > 0 ? (
+            <div role="list" aria-label={`Artifacts in #${channel.name}`} className="flex flex-col">
+              {channelArtifactsNewestFirst(artifacts).map((artifact) => (
+                <ArtifactPill
+                  key={artifact.id}
+                  file={artifact.file}
+                  label={artifact.title}
+                  detail={
+                    <RelativeTime className="text-muted-foreground" date={artifact.sharedAt} />
+                  }
+                  className="w-full text-foreground"
+                  onClick={() => onArtifactOpen(artifact)}
+                />
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground italic">No artifacts shared yet.</p>
+          )}
+        </OverviewSection>
 
-      <OverviewSection title="Routines" count={routines.length}>
-        {routines.length > 0 ? (
-          <div role="list" aria-label={`Routines in #${channel.name}`} className="space-y-2">
-            {routines.map((routine) => (
-              <RoutineItem key={routine.id} channelId={channel.id} routine={routine} />
-            ))}
-          </div>
-        ) : (
-          <p className="text-sm text-muted-foreground italic">No routines scheduled yet.</p>
-        )}
-      </OverviewSection>
-    </div>
+        <OverviewSection title="Routines" count={routines.length}>
+          {routines.length > 0 ? (
+            <div role="list" aria-label={`Routines in #${channel.name}`} className="space-y-2">
+              {routines.map((routine) => (
+                <RoutineItem key={routine.id} channelId={channel.id} routine={routine} />
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground italic">No routines scheduled yet.</p>
+          )}
+        </OverviewSection>
+      </div>
+    </ScrollableFade>
   );
 }
 
@@ -266,20 +296,32 @@ function RowMenu({ name, children }: { name: string; children?: ReactNode }) {
 }
 
 function OverviewSection({
-  title,
-  count,
   detail,
   children,
-}: {
-  title: string;
-  count: number | string;
-  detail?: ReactNode;
+  ...heading
+}: ComponentProps<typeof SectionHeading> & {
   children: ReactNode;
 }) {
   return (
-    <section className="space-y-3 not-first-of-type:border-t not-first-of-type:pt-6">
-      <SectionHeading title={title} count={count} detail={detail} />
-      {children}
-    </section>
+    <details
+      open
+      className="group/overview-section not-first-of-type:border-t not-first-of-type:pt-6"
+    >
+      <summary className="cursor-pointer list-none rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden">
+        <SectionHeading
+          {...heading}
+          detail={
+            <>
+              {detail}
+              <ChevronRight
+                aria-hidden
+                className="size-3.5 text-muted-foreground transition-transform group-open/overview-section:rotate-90 motion-reduce:transition-none"
+              />
+            </>
+          }
+        />
+      </summary>
+      <div className="mt-3">{children}</div>
+    </details>
   );
 }

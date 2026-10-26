@@ -19,14 +19,36 @@ test("only the lead's messages can request input", () => {
   expect(sendMember?.parameters?.parse(flagged)).toEqual({ content: "Which color?" });
 });
 
-test("only the lead can ask to be woken, and within two hours", () => {
-  const finishLead = channelLeadTools.find(({ name }) => name === "finish_agent_turn");
-  const finishMember = channelMemberTools.find(({ name }) => name === "finish_agent_turn");
-  const followUp = { waitingFor: "CI to finish", wakeAfterMinutes: 20 };
+test.each(["lead", "member"] as const)(
+  "%s agents can finish idle, waiting, or waiting with a bounded follow-up",
+  (role) => {
+    const tools = role === "lead" ? channelLeadTools : channelMemberTools;
+    const finish = tools.find(({ name }) => name === "finish_agent_turn");
+    const parameters = finish?.parameters;
+    expect(parameters).toBeDefined();
 
-  expect(finishLead?.parameters?.safeParse(followUp).success).toBe(true);
-  expect(finishLead?.parameters?.safeParse({ ...followUp, wakeAfterMinutes: 121 }).success).toBe(
-    false,
-  );
-  expect(finishMember?.parameters?.safeParse(followUp).success).toBe(false);
-});
+    for (const input of [
+      {},
+      { waitingFor: "CI to finish" },
+      ...[5, 20, 120].map((wakeAfterMinutes) => ({
+        waitingFor: "CI to finish",
+        wakeAfterMinutes,
+      })),
+    ]) {
+      expect(parameters?.parse(input)).toEqual(input);
+    }
+
+    for (const input of [
+      { wakeAfterMinutes: 20 },
+      { waitingFor: " " },
+      { waitingFor: " ", wakeAfterMinutes: 20 },
+      { waitingFor: "CI to finish", extra: true },
+      ...[4, 121, 5.5].map((wakeAfterMinutes) => ({
+        waitingFor: "CI to finish",
+        wakeAfterMinutes,
+      })),
+    ]) {
+      expect(parameters?.safeParse(input).success).toBe(false);
+    }
+  },
+);

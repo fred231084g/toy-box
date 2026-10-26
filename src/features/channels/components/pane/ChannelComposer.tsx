@@ -8,6 +8,7 @@ import { AgentCompletionMenu } from "@channels/components/agents/AgentCompletion
 import { agentCompletionSource } from "@channels/components/agents/agentCompletionSource";
 import {
   agentHandleFromName,
+  channelArtifactsNewestFirst,
   channelAudienceLabel,
   channelHasPendingRequest,
   channelTasksDiff,
@@ -57,9 +58,9 @@ export function ChannelComposer({
   const request = state?.request;
   const needsReply = channel ? channelHasPendingRequest(channel) : false;
   const { lead, members, agents } = useChannelPane();
-  const artifacts = state?.artifacts
-    .map(({ file, title, sharedAt }) => ({ file, label: title, time: Date.parse(sharedAt) }))
-    .reverse();
+  const artifacts = channelArtifactsNewestFirst(state?.artifacts ?? []).map(
+    ({ file, title, sharedAt }) => ({ file, label: title, time: Date.parse(sharedAt) }),
+  );
   const draft = useComposerDraft({
     ...useSavedDraft(`channel:${channelId}`),
     onSend: onSubmit,
@@ -106,7 +107,7 @@ export function ChannelComposer({
       draft={draft}
       tray={
         <ComposerTray
-          artifacts={artifacts ?? []}
+          artifacts={artifacts}
           checklist={checklist}
           artifactTimeLabel="Shared"
           checklistLabel="Tasks"

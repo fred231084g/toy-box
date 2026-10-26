@@ -6,6 +6,7 @@ import { RunningIndicator } from "@/shared/ui/running-indicator";
 import { cn } from "@/shared/utils";
 
 export type ChecklistStatus = "pending" | "in_progress" | "blocked" | "done";
+export type ChecklistFilter = "none" | "inProgress";
 
 export type ChecklistItem = {
   id: string;
@@ -20,23 +21,39 @@ export type ChecklistItem = {
 export function Checklist({
   items,
   className,
+  filter = "none",
+  emptyMessage,
 }: {
   items: readonly ChecklistItem[];
   className?: string;
+  filter?: ChecklistFilter;
+  emptyMessage?: string;
 }) {
+  const visibleItems = filter === "inProgress" ? items.filter(hasInProgress) : items;
+  if (visibleItems.length === 0) {
+    return emptyMessage ? (
+      <p className={cn("text-muted-foreground italic", className)}>{emptyMessage}</p>
+    ) : null;
+  }
+
   return (
     <ul className={cn("space-y-2", className)}>
-      {items.map((item) => (
-        // Keyed by status too, so a parent re-derives its expansion when it becomes done.
-        <ChecklistRow key={`${item.id}:${item.status}`} item={item} />
+      {visibleItems.map((item) => (
+        // Reset disclosure when status or the visibility filter changes.
+        <ChecklistRow key={`${item.id}:${item.status}:${filter}`} item={item} filter={filter} />
       ))}
     </ul>
   );
 }
 
-function ChecklistRow({ item }: { item: ChecklistItem }) {
+function hasInProgress(item: ChecklistItem): boolean {
+  return item.status === "in_progress" || (item.children ?? []).some(hasInProgress);
+}
+
+function ChecklistRow({ item, filter }: { item: ChecklistItem; filter: ChecklistFilter }) {
   const children = item.children ?? [];
-  const [expanded, setExpanded] = useState(item.status !== "done");
+  const hasChildren = filter === "inProgress" ? children.some(hasInProgress) : children.length > 0;
+  const [expanded, setExpanded] = useState(filter === "inProgress" || item.status !== "done");
   const completedCount = children.filter(({ status }) => status === "done").length;
   const lastSpace = item.title.lastIndexOf(" ");
   const titleClassName = cn("wrap-anywhere", item.status === "done" && "text-muted-foreground");
@@ -47,11 +64,11 @@ function ChecklistRow({ item }: { item: ChecklistItem }) {
         role="presentation"
         className={cn(
           "group/checklist-row flex min-w-0 items-start gap-2 leading-snug",
-          children.length > 0 && "cursor-pointer",
+          hasChildren && "cursor-pointer",
         )}
         onClick={(event) => {
           if (
-            children.length > 0 &&
+            hasChildren &&
             event.target instanceof Element &&
             !event.target.closest("button, a, input, select, textarea, [role=button], [role=link]")
           ) {
@@ -80,18 +97,20 @@ function ChecklistRow({ item }: { item: ChecklistItem }) {
                     {completedCount}/{children.length}
                   </Badge>
                 )}
-                <button
-                  type="button"
-                  className="ms-0.5 inline-flex size-[1.15em] items-center justify-center rounded-sm align-[-0.2em] text-muted-foreground outline-none group-hover/checklist-row:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
-                  aria-label={`Subtasks of ${item.title}`}
-                  aria-expanded={expanded}
-                  onClick={() => setExpanded((current) => !current)}
-                >
-                  <ChevronRight
-                    aria-hidden
-                    className={cn("size-3 transition-transform", expanded && "rotate-90")}
-                  />
-                </button>
+                {hasChildren && (
+                  <button
+                    type="button"
+                    className="ms-0.5 inline-flex size-[1.15em] items-center justify-center rounded-sm align-[-0.2em] text-muted-foreground outline-none group-hover/checklist-row:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+                    aria-label={`Subtasks of ${item.title}`}
+                    aria-expanded={expanded}
+                    onClick={() => setExpanded((current) => !current)}
+                  >
+                    <ChevronRight
+                      aria-hidden
+                      className={cn("size-3 transition-transform", expanded && "rotate-90")}
+                    />
+                  </button>
+                )}
               </span>
             </span>
           ) : (
@@ -99,8 +118,8 @@ function ChecklistRow({ item }: { item: ChecklistItem }) {
           )}
         </div>
       </div>
-      {expanded && children.length > 0 && (
-        <Checklist items={children} className="ml-2 border-l pl-4" />
+      {expanded && hasChildren && (
+        <Checklist items={children} filter={filter} className="ml-2 border-l pl-4" />
       )}
     </li>
   );

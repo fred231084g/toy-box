@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import type { ChannelAgent, ChannelMember } from "./index";
+import type { ChannelAgent, ChannelArtifact, ChannelMember } from "./index";
 import {
   agentHandleFromName,
+  channelArtifactsNewestFirst,
   channelAudienceLabel,
   channelLead,
   channelRoutineInputSchema,
@@ -75,6 +76,28 @@ describe("channel unread position", () => {
   test("a fully read channel has no unread position", () => {
     expect(channelUnreadAfter({ seenThrough: 7, latestSequence: 7 })).toBeNull();
   });
+});
+
+test("artifacts sort newest first without mutating input or reordering equal timestamps", () => {
+  const artifacts: readonly ChannelArtifact[] = Object.freeze(
+    [
+      "2026-10-23T16:00:00+02:00",
+      "2026-10-23T15:00:00Z",
+      "2026-10-23T15:00:00.000Z",
+      "2026-10-23T13:00:00Z",
+    ].map((sharedAt, index) => ({
+      id: `artifact-${index}`,
+      file: { kind: "machine" as const, path: `/artifact-${index}.md` },
+      title: `Artifact ${index}`,
+      sharedAt,
+    })),
+  );
+  expect(channelArtifactsNewestFirst(artifacts)).toEqual([
+    artifacts[1]!,
+    artifacts[2]!,
+    artifacts[0]!,
+    artifacts[3]!,
+  ]);
 });
 
 describe("channel audience labels", () => {

@@ -238,6 +238,9 @@ const editChannelTasksTool = defineTool("edit_channel_tasks", {
   },
 });
 
+const FOLLOW_UP_BOUNDS =
+  "Follow-ups check on a teammate or external work within two hours. Use a routine for anything later or recurring.";
+
 const finishChannelAgentTurnParameters = z
   .object({
     waitingFor: z
@@ -247,14 +250,6 @@ const finishChannelAgentTurnParameters = z
       .max(100)
       .optional()
       .describe("What this agent is waiting for after the turn ends."),
-  })
-  .strict();
-
-const FOLLOW_UP_BOUNDS =
-  "Follow-ups check on a member or external work within two hours. Use a routine for anything later or recurring.";
-
-const finishLeadTurnParameters = finishChannelAgentTurnParameters
-  .extend({
     wakeAfterMinutes: z
       .number()
       .int()
@@ -265,6 +260,7 @@ const finishLeadTurnParameters = finishChannelAgentTurnParameters
         "Wake after this many minutes to check on what you're waiting for, unless something wakes you first.",
       ),
   })
+  .strict()
   .refine(
     ({ waitingFor, wakeAfterMinutes }) =>
       wakeAfterMinutes === undefined || waitingFor !== undefined,
@@ -273,21 +269,15 @@ const finishLeadTurnParameters = finishChannelAgentTurnParameters
 
 const finishChannelAgentTurnTool = defineTool("finish_agent_turn", {
   description:
-    "Ends this private agent turn and clears its active channel status. waitingFor leaves a brief waiting status.",
+    "Ends this private agent turn and clears its active channel status. waitingFor leaves a brief waiting status. Add wakeAfterMinutes to check back unless something wakes you first.",
   parameters: finishChannelAgentTurnParameters,
-  isTerminal: true,
-  handler: async (
-    { waitingFor, wakeAfterMinutes }: z.output<typeof finishLeadTurnParameters>,
-    invocation,
-  ) => {
+  // TODO: Restore isTerminal after https://github.com/github/copilot-cli/issues/4755 is fixed.
+  handler: async ({ waitingFor, wakeAfterMinutes }, invocation) => {
     const { finishChannelAgentTurn } = await import("@channels/server");
     await finishChannelAgentTurn(invocation.sessionId, waitingFor, wakeAfterMinutes);
     return "Done.";
   },
 });
-
-/** The same tool plus a follow-up, which only the lead can set. */
-const finishLeadTurnTool = { ...finishChannelAgentTurnTool, parameters: finishLeadTurnParameters };
 
 const setRoutineTool = defineTool("set_routine", {
   description:
@@ -519,6 +509,7 @@ const commonChannelAgentTools = [
   setChannelStatusTool,
   reactToChannelMessageTool,
   shareChannelArtifactFromAgentTool,
+  finishChannelAgentTurnTool,
 ];
 
 export const channelLeadTools = [
@@ -529,13 +520,11 @@ export const channelLeadTools = [
   editChannelTasksTool,
   setRoutineTool,
   deleteRoutineTool,
-  finishLeadTurnTool,
 ];
 export const channelMemberTools = [
   ...commonChannelAgentTools,
   sendChannelMessageTool,
   updateMemberTool,
-  finishChannelAgentTurnTool,
 ];
 
 export const channelTools = [
